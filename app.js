@@ -404,7 +404,7 @@ async function loadTileData(key) {
         const cols = endCol - startCol;
         const rows = endRow - startRow;
 
-        const STRIDE = 4;   // 1 = 5m mesh, 2 = 10m, 4 = 20m, 8 = 40m
+        const STRIDE = 3;   // 1 = 5m mesh, 2 = 10m, 4 = 20m, 8 = 40m
         const res = globalMeta.resolution;
         const segX = Math.ceil((cols - 1) / STRIDE);
         const segY = Math.ceil((rows - 1) / STRIDE);
