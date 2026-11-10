@@ -306,11 +306,8 @@ async function setCameraToLocation(lat, lon) {
     await checkAndLoadTiles(dist);
 
     // Cast a ray straight down from the sky to find ground level
-    raycaster.set(new THREE.Vector3(gpsSceneX, 3000, gpsSceneZ), new THREE.Vector3(0, -1, 0));
-    const targetMeshes = Object.values(activeTiles).filter(t => t.isLoaded).map(t => t.group.children[1]);
-    const intersects = raycaster.intersectObjects(targetMeshes);
-    
-    let gpsGroundElev = 20; 
+    const ground = sampleCell(gpsSceneX, gpsSceneZ);
+    const gpsGroundElev = ground ? ground.elev : 20; 
     if (intersects.length > 0) {
         gpsGroundElev = intersects[0].point.y;
     }
@@ -404,21 +401,25 @@ async function loadTileData(key) {
         const cols = endCol - startCol;
         const rows = endRow - startRow;
 
-        const geometry = new THREE.PlaneGeometry(cols * globalMeta.resolution, rows * globalMeta.resolution, cols - 1, rows - 1);
-        const vertices = geometry.attributes.position.array;
-        const vertexColors = [];
-
-        let vIdx = 0;
-        for (let i = 0; i < demBuffer.length; i++) {
-            vertices[vIdx * 3 + 2] = (demBuffer[i] !== globalMeta.nodata) ? demBuffer[i] : -500;
-            const color = rockColors[lithBuffer[i]] || rockColors[0];
-            vertexColors.push(color.r, color.g, color.b);
-            vIdx++;
-        }
-
-        geometry.setAttribute('color', new THREE.Float32BufferAttribute(vertexColors, 3));
-        geometry.computeVertexNormals();
-        geometry.rotateX(-Math.PI / 2);
+        const STRIDE = 4;   // 1 = 5 m mesh, 2 = 10 m, 4 = 20 m, 8 = 40 m
+	const res = globalMeta.resolution, nodata = globalMeta.nodata;
+	const nx = Math.ceil(cols / STRIDE), ny = Math.ceil(rows / STRIDE);
+	const geometry = new THREE.PlaneGeometry(cols * res, rows * res, nx - 1, ny - 1);
+	geometry.deleteAttribute('normal');
+	geometry.deleteAttribute('uv');
+	const pos = geometry.attributes.position.array;
+	const colors = new Float32Array(nx * ny * 3);
+	let v = 0;
+	for (let r = 0; r < ny; r++) {
+	    for (let c = 0; c < nx; c++, v++) {
+	        const i = Math.min(r * STRIDE, rows - 1) * cols + Math.min(c * STRIDE, cols - 1);
+        	pos[v * 3 + 2] = demBuffer[i] === nodata ? 0 : demBuffer[i];
+	        const col = rockColors[lithBuffer[i]] || rockColors[0];
+	        colors[v * 3] = col.r; colors[v * 3 + 1] = col.g; colors[v * 3 + 2] = col.b;
+	    }
+	}
+	geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+	geometry.rotateX(-Math.PI / 2);
         
         const chunkCenterX = startCol * globalMeta.resolution + (cols * globalMeta.resolution) / 2;
         const chunkCenterZ = startRow * globalMeta.resolution + (rows * globalMeta.resolution) / 2;
@@ -445,11 +446,36 @@ async function loadTileData(key) {
         group.add(colorMesh);
         scene.add(group);
         
-        activeTiles[key] = { isLoaded: true, group: group };
+        activeTiles[key] = { isLoaded: true, group: group, dem: demBuffer, lith: lithBuffer, cols: cols, rows: rows };
         document.getElementById('infoText').innerHTML = `Tiles active: ${Object.keys(activeTiles).length}`;
     } catch(e) {
         console.error("Failed to load tile", key, e);
     }
+}
+
+function sampleCell(x, z) {
+    const res = globalMeta.resolution, ts = globalMeta.tile_size;
+    const col = Math.floor(x / res), row = Math.floor(z / res);
+    const tc = Math.floor(col / ts), tr = Math.floor(row / ts);
+    const tile = activeTiles[`${tr}_${tc}`];
+    if (!tile || !tile.isLoaded) return null;
+    const i = (row - tr * ts) * tile.cols + (col - tc * ts);
+    const e = tile.dem[i];
+    return { elev: e === globalMeta.nodata ? 0 : e, rock: tile.lith[i] };
+}
+
+function pickCentreRay() {
+    const origin = new THREE.Vector3(), dir = new THREE.Vector3();
+    camera.getWorldPosition(origin);
+    camera.getWorldDirection(dir);
+    const step = globalMeta.resolution;
+    for (let t = step; t < camera.far; t += step) {
+        const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
+        if (dir.y > 0 && y > 1000) break;          // pointing at the sky
+        const cell = sampleCell(x, z);
+        if (cell && y <= cell.elev) return { x, y, z, rock: cell.rock };
+    }
+    return null;
 }
 
 function onWindowResize() {
@@ -477,52 +503,33 @@ function updateCompass() {
 }
 
 function updateRaycaster() {
-    const targetMeshes = Object.values(activeTiles).filter(t => t.isLoaded).map(t => t.group.children[1]);
-    if (targetMeshes.length === 0) return;
-    
-    raycaster.setFromCamera(centerScreen, camera);
-    const intersects = raycaster.intersectObjects(targetMeshes);
-
-    if (intersects.length > 0) {
-        const hit = intersects[0];
-        const meshData = hit.object.userData;
-        
-        const globalCol = Math.floor(hit.point.x / globalMeta.resolution);
-        const globalRow = Math.floor(hit.point.z / globalMeta.resolution);
-        
-        // Calculate the relative coordinate inside this specific 5km tile
-        const localCol = globalCol - meshData.startCol;
-        const localRow = globalRow - meshData.startRow;
-        const localIndex = localRow * meshData.cols + localCol;
-
-        const easting = globalMeta.origin_x + hit.point.x;
-        const northing = globalMeta.origin_y - hit.point.z;
-
-        if (localIndex >= 0 && localIndex < meshData.lithBuffer.length) {
-            const rockId = meshData.lithBuffer[localIndex];
-            const rockCode = globalMeta.rock_dictionary[rockId] || "";
-            const rockDesc = GEOLOGY_DICT[rockCode] || "Unmapped";
-            
-            document.getElementById('infoText').innerHTML = 
-                `<b>Target Locked:</b><br>` +
-                `<span style="color:#00ff00; font-weight:bold;">Code: ${rockCode}</span><br>` +
-                `Elev: ~${Math.round(hit.point.y)} m<br>` +
-                `<span style="font-size: 0.85em; color: #ccc;">HK1980: E ${Math.round(easting)}, N ${Math.round(northing)}</span>`;
-                
-            const expBox = document.getElementById('explanationBox');
-            expBox.style.display = 'block';
-            expBox.innerHTML = rockDesc; 
-        }
-    } else {
-        document.getElementById('explanationBox').style.display = 'none';
+    const hit = pickCentreRay();
+    const expBox = document.getElementById('explanationBox');
+    if (!hit) {
+        expBox.style.display = 'none';
         document.getElementById('infoText').innerHTML = "Aim at terrain...";
+        return;
     }
+    const rockCode = globalMeta.rock_dictionary[hit.rock] || "";
+    const easting = globalMeta.origin_x + hit.x;
+    const northing = globalMeta.origin_y - hit.z;
+    document.getElementById('infoText').innerHTML =
+        `<b>Target Locked:</b><br><span style="color:#00ff00; font-weight:bold;">Code: ${rockCode}</span><br>` +
+        `Elev: ~${Math.round(hit.y)} m<br>` +
+        `<span style="font-size: 0.85em; color: #ccc;">HK1980: E ${Math.round(easting)}, N ${Math.round(northing)}</span>`;
+    expBox.style.display = 'block';
+    expBox.innerHTML = GEOLOGY_DICT[rockCode] || "Unmapped";
 }
 
-function animate() {
+let lastHud = 0, frames = 0, fpsStart = 0;
+function animate(now = 0) {
     requestAnimationFrame(animate);
-    controls.update();     
-    updateCompass();       
-    updateRaycaster();     
+    controls.update();
+    frames++;
+    if (now - fpsStart >= 1000) {
+        document.getElementById('fpsText').innerText = frames + " fps";
+        frames = 0; fpsStart = now;
+    }
+    if (now - lastHud > 150) { lastHud = now; updateCompass(); updateRaycaster(); }
     renderer.render(scene, camera);
 }
