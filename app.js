@@ -301,16 +301,10 @@ async function setCameraToLocation(lat, lon) {
     gpsSceneZ = globalMeta.origin_y - hk1980[1];
 
     const dist = parseInt(document.getElementById('viewDistance').value);
-    
-    // Await tile loading BEFORE moving the camera so we can raycast the ground
     await checkAndLoadTiles(dist);
 
-    // Cast a ray straight down from the sky to find ground level
     const ground = sampleCell(gpsSceneX, gpsSceneZ);
-    const gpsGroundElev = ground ? ground.elev : 20; 
-    if (intersects.length > 0) {
-        gpsGroundElev = intersects[0].point.y;
-    }
+    let gpsGroundElev = ground ? ground.elev : 20; 
     
     cameraGroup.position.set(gpsSceneX, gpsGroundElev + 2, gpsSceneZ);
 }
@@ -413,7 +407,7 @@ async function loadTileData(key) {
 	for (let r = 0; r < ny; r++) {
 	    for (let c = 0; c < nx; c++, v++) {
 	        const i = Math.min(r * STRIDE, rows - 1) * cols + Math.min(c * STRIDE, cols - 1);
-        	pos[v * 3 + 2] = demBuffer[i] === nodata ? 0 : demBuffer[i];
+        	pos[v * 3 + 2] = demBuffer[i] < -500 ? 0 : demBuffer[i];
 	        const col = rockColors[lithBuffer[i]] || rockColors[0];
 	        colors[v * 3] = col.r; colors[v * 3 + 1] = col.g; colors[v * 3 + 2] = col.b;
 	    }
@@ -461,7 +455,7 @@ function sampleCell(x, z) {
     if (!tile || !tile.isLoaded) return null;
     const i = (row - tr * ts) * tile.cols + (col - tc * ts);
     const e = tile.dem[i];
-    return { elev: e === globalMeta.nodata ? 0 : e, rock: tile.lith[i] };
+    return { elev: e < -500 ? 0 : e, rock: tile.lith[i] };
 }
 
 function pickCentreRay() {
