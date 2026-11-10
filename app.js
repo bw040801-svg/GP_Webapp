@@ -405,18 +405,24 @@ async function loadTileData(key) {
 	const colors = new Float32Array(nx * ny * 3);
 	let v = 0;
 	for (let r = 0; r < ny; r++) {
+	    // Read rows from bottom to top to match Three.js orientation
+	    const flipped_r = (ny - 1) - r; 
+    
 	    for (let c = 0; c < nx; c++, v++) {
-	        const i = Math.min(r * STRIDE, rows - 1) * cols + Math.min(c * STRIDE, cols - 1);
-        	pos[v * 3 + 2] = demBuffer[i] < -500 ? 0 : demBuffer[i];
+	        const i = Math.min(flipped_r * STRIDE, rows - 1) * cols + Math.min(c * STRIDE, cols - 1);
+	        pos[v * 3 + 2] = demBuffer[i] < -500 ? 0 : demBuffer[i];
+        
 	        const col = rockColors[lithBuffer[i]] || rockColors[0];
-	        colors[v * 3] = col.r; colors[v * 3 + 1] = col.g; colors[v * 3 + 2] = col.b;
+	        colors[v * 3] = col.r; 
+	        colors[v * 3 + 1] = col.g; 
+	        colors[v * 3 + 2] = col.b;
 	    }
 	}
 	geometry.attributes.position.needsUpdate = true;
 	geometry.computeBoundingSphere();
         
         const chunkCenterX = startCol * globalMeta.resolution + (cols * globalMeta.resolution) / 2;
-        const chunkCenterZ = startRow * globalMeta.resolution + (rows * globalMeta.resolution) / 2;
+        const chunkCenterZ = -(startRow * globalMeta.resolution + (rows * globalMeta.resolution) / 2);
         geometry.translate(chunkCenterX, 0, chunkCenterZ);
 
         const currentOpacity = parseFloat(document.getElementById('opacitySlider').value);
