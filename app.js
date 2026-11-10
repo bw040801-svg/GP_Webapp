@@ -1,4 +1,4 @@
-let scene, camera, cameraGroup, renderer, controls;d
+let scene, camera, cameraGroup, renderer, controls;
 let activeTiles = {}; // Stores dynamically loaded terrain tiles
 let raycaster, centerScreen;
 let globalMeta;
