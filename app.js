@@ -226,7 +226,7 @@ function initThreeJS() {
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
     document.body.appendChild(renderer.domElement);
 
     controls = new THREE.DeviceOrientationControls(camera);
