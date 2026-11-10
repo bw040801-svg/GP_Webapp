@@ -303,9 +303,18 @@ async function setCameraToLocation(lat, lon) {
     const dist = parseInt(document.getElementById('viewDistance').value);
     await checkAndLoadTiles(dist);
 
+    // 1. Sample 5m DEM height
     const ground = sampleCell(gpsSceneX, gpsSceneZ);
-    let gpsGroundElev = ground ? ground.elev : 20; 
-    
+    let gpsGroundElev = ground ? ground.elev : 20;
+
+    // 2. Also check the strided 3D mesh height so the camera never spawns underground on slopes
+    raycaster.set(new THREE.Vector3(gpsSceneX, 3000, gpsSceneZ), new THREE.Vector3(0, -1, 0));
+    const targetMeshes = Object.values(activeTiles).filter(t => t.isLoaded).map(t => t.group.children[1]);
+    const intersects = raycaster.intersectObjects(targetMeshes);
+    if (intersects.length > 0) {
+        gpsGroundElev = Math.max(gpsGroundElev, intersects[0].point.y);
+    }
+
     cameraGroup.position.set(gpsSceneX, gpsGroundElev + 2, gpsSceneZ);
 }
 
@@ -395,51 +404,65 @@ async function loadTileData(key) {
         const cols = endCol - startCol;
         const rows = endRow - startRow;
 
-        const STRIDE = 4;   // 1 = 5 m mesh, 2 = 10 m, 4 = 20 m, 8 = 40 m
-	const res = globalMeta.resolution, nodata = globalMeta.nodata;
-	const nx = Math.ceil(cols / STRIDE), ny = Math.ceil(rows / STRIDE);
-	const geometry = new THREE.PlaneGeometry(cols * res, rows * res, nx - 1, ny - 1);
-	geometry.deleteAttribute('normal');
-	geometry.deleteAttribute('uv');
-	const pos = geometry.attributes.position.array;
-	const colors = new Float32Array(nx * ny * 3);
-	let v = 0;
-	for (let r = 0; r < ny; r++) {
-	    // Read rows from bottom to top to match Three.js orientation
-	    const flipped_r = (ny - 1) - r; 
-    
-	    for (let c = 0; c < nx; c++, v++) {
-	        const i = Math.min(flipped_r * STRIDE, rows - 1) * cols + Math.min(c * STRIDE, cols - 1);
-	        pos[v * 3 + 2] = demBuffer[i] < -500 ? 0 : demBuffer[i];
+        const STRIDE = 4;   // 1 = 5m mesh, 2 = 10m, 4 = 20m, 8 = 40m
+        const res = globalMeta.resolution;
+        const segX = Math.ceil((cols - 1) / STRIDE);
+        const segY = Math.ceil((rows - 1) / STRIDE);
+        const nx = segX + 1;
+        const ny = segY + 1;
+
+        const geometry = new THREE.PlaneGeometry(cols * res, rows * res, segX, segY);
+        geometry.deleteAttribute('normal');
+        geometry.deleteAttribute('uv');
+
+        const pos = geometry.attributes.position.array;
+        const colors = new Float32Array(nx * ny * 3);
+        let v = 0;
+        for (let r = 0; r < ny; r++) {
+            const srcR = Math.min(r * STRIDE, rows - 1);
+            for (let c = 0; c < nx; c++, v++) {
+                const srcC = Math.min(c * STRIDE, cols - 1);
+                const i = srcR * cols + srcC;
+                pos[v * 3 + 2] = demBuffer[i] < -500 ? 0 : demBuffer[i];
+                const col = rockColors[lithBuffer[i]] || rockColors[0];
+                colors[v * 3] = col.r;
+                colors[v * 3 + 1] = col.g;
+                colors[v * 3 + 2] = col.b;
+            }
+        }
+
+        // Attach vertex colors and rotate flat onto the horizontal XZ plane
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.rotateX(-Math.PI / 2);
         
-	        const col = rockColors[lithBuffer[i]] || rockColors[0];
-	        colors[v * 3] = col.r; 
-	        colors[v * 3 + 1] = col.g; 
-	        colors[v * 3 + 2] = col.b;
-	    }
-	}
-	geometry.attributes.position.needsUpdate = true;
-	geometry.computeBoundingSphere();
-        
-        const chunkCenterX = startCol * globalMeta.resolution + (cols * globalMeta.resolution) / 2;
-        const chunkCenterZ = -(startRow * globalMeta.resolution + (rows * globalMeta.resolution) / 2);
+        const chunkCenterX = startCol * res + (cols * res) / 2;
+        const chunkCenterZ = startRow * res + (rows * res) / 2;
         geometry.translate(chunkCenterX, 0, chunkCenterZ);
+        geometry.computeBoundingSphere();
 
         const currentOpacity = parseFloat(document.getElementById('opacitySlider').value);
         
-        const occluderMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true });
+        const occluderMat = new THREE.MeshBasicMaterial({
+            colorWrite: false,
+            depthWrite: true,
+            side: THREE.DoubleSide
+        });
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-	const colorMat = new THREE.MeshBasicMaterial({
-	    vertexColors: true, side: THREE.DoubleSide,
-	    transparent: true, opacity: currentOpacity, depthWrite: false,
-	    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
-	});
+        const colorMat = new THREE.MeshBasicMaterial({
+            vertexColors: true,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: currentOpacity,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1
+        });
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
         
-        // Embed the binary array directly into the mesh so the raycaster can read it later!
         colorMesh.userData = { lithBuffer: lithBuffer, startCol: startCol, startRow: startRow, cols: cols };
 
         const group = new THREE.Group();
@@ -453,7 +476,6 @@ async function loadTileData(key) {
         console.error("Failed to load tile", key, e);
     }
 }
-
 function sampleCell(x, z) {
     const res = globalMeta.resolution, ts = globalMeta.tile_size;
     const col = Math.floor(x / res), row = Math.floor(z / res);
