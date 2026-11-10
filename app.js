@@ -404,7 +404,7 @@ async function loadTileData(key) {
         const cols = endCol - startCol;
         const rows = endRow - startRow;
 
-        const STRIDE = 2;   // 1 = 5m mesh, 2 = 10m, 4 = 20m, 8 = 40m
+        const STRIDE = 4;   // 1 = 5m mesh, 2 = 10m, 4 = 20m, 8 = 40m
         const res = globalMeta.resolution;
         const segX = Math.ceil((cols - 1) / STRIDE);
         const segY = Math.ceil((rows - 1) / STRIDE);
@@ -412,7 +412,6 @@ async function loadTileData(key) {
         const ny = segY + 1;
 
         const geometry = new THREE.PlaneGeometry(cols * res, rows * res, segX, segY);
-        geometry.deleteAttribute('normal');
         geometry.deleteAttribute('uv');
 
         const pos = geometry.attributes.position.array;
@@ -435,10 +434,14 @@ async function loadTileData(key) {
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.rotateX(-Math.PI / 2);
         
-        const chunkCenterX = startCol * res + (cols * res) / 2;
-        const chunkCenterZ = startRow * res + (rows * res) / 2;
-        geometry.translate(chunkCenterX, 0, chunkCenterZ);
-        geometry.computeBoundingSphere();
+	const chunkCenterX = startCol * res + (cols * res) / 2;
+	const chunkCenterZ = startRow * res + (rows * res) / 2;
+	geometry.translate(chunkCenterX, 0, chunkCenterZ);
+
+	// Force Three.js to update the mesh and calculate light bounce angles
+	geometry.attributes.position.needsUpdate = true;
+	geometry.computeVertexNormals(); 
+	geometry.computeBoundingSphere();
 
         const currentOpacity = parseFloat(document.getElementById('opacitySlider').value);
         
@@ -450,7 +453,7 @@ async function loadTileData(key) {
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-        const colorMat = new THREE.MeshBasicMaterial({
+        const colorMat = new THREE.MeshLambertMaterial({
             vertexColors: true,
             side: THREE.DoubleSide,
             transparent: true,
