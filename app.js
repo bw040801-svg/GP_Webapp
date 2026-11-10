@@ -412,8 +412,8 @@ async function loadTileData(key) {
 	        colors[v * 3] = col.r; colors[v * 3 + 1] = col.g; colors[v * 3 + 2] = col.b;
 	    }
 	}
-	geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-	geometry.rotateX(-Math.PI / 2);
+	geometry.attributes.position.needsUpdate = true;
+	geometry.computeBoundingSphere();
         
         const chunkCenterX = startCol * globalMeta.resolution + (cols * globalMeta.resolution) / 2;
         const chunkCenterZ = startRow * globalMeta.resolution + (rows * globalMeta.resolution) / 2;
@@ -425,9 +425,10 @@ async function loadTileData(key) {
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-        const colorMat = new THREE.MeshBasicMaterial({
-	    vertexColors: true, side: THREE.FrontSide,
-	    transparent: true, opacity: currentOpacity, depthWrite: false 
+	const colorMat = new THREE.MeshBasicMaterial({
+	    vertexColors: true, side: THREE.DoubleSide,
+	    transparent: true, opacity: currentOpacity, depthWrite: false,
+	    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
 	});
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
