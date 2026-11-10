@@ -226,7 +226,7 @@ function initThreeJS() {
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
     document.body.appendChild(renderer.domElement);
 
     controls = new THREE.DeviceOrientationControls(camera);
@@ -430,10 +430,10 @@ async function loadTileData(key) {
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-        const colorMat = new THREE.MeshStandardMaterial({
-            vertexColors: true, roughness: 0.8, side: THREE.FrontSide,
-            transparent: true, opacity: currentOpacity, depthWrite: false 
-        });
+        const colorMat = new THREE.MeshBasicMaterial({
+	    vertexColors: true, side: THREE.FrontSide,
+	    transparent: true, opacity: currentOpacity, depthWrite: false 
+	});
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
         
