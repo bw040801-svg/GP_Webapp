@@ -473,7 +473,7 @@ async function loadTileData(key) {
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-        // Shaded terrain material with Outcrop-style silhouette & rock boundary shader
+        // Clean shaded terrain material (no lines or wireframe overlays)
         const colorMat = new THREE.MeshPhongMaterial({
             vertexColors: true,
             flatShading: false,
@@ -486,27 +486,6 @@ async function loadTileData(key) {
             polygonOffsetFactor: -1,
             polygonOffsetUnits: -1
         });
-
-        colorMat.onBeforeCompile = (shader) => {
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <dithering_fragment>',
-                `
-                #include <dithering_fragment>
-                
-                // 1. White highlights along mountain ridges & grazing silhouette edges
-                vec3 viewDir = normalize(vViewPosition);
-                float ndotv = abs(dot(normal, viewDir));
-                float ridgeEdge = 1.0 - smoothstep(0.12, 0.28, ndotv);
-
-                // 2. Crisp white boundary lines where geological unit colors meet
-                vec3 colGrad = fwidth(vColor);
-                float unitBorder = smoothstep(0.05, 0.15, length(colGrad));
-
-                float whiteLine = max(ridgeEdge * 0.85, unitBorder * 0.95);
-                gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), whiteLine);
-                `
-            );
-        };
 
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
