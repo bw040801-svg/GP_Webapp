@@ -406,15 +406,14 @@ async function loadTileData(key) {
         const cols = endCol - startCol;
         const rows = endRow - startRow;
 
-        const STRIDE = 1; // 1 = 5m maximum detail. Change to 2 (10m) if framerate drops.
+        const STRIDE = 4;   // 1 = 5m mesh, 2 = 10m, 4 = 20m, 8 = 40m
         const res = globalMeta.resolution;
         const segX = Math.ceil((cols - 1) / STRIDE);
         const segY = Math.ceil((rows - 1) / STRIDE);
         const nx = segX + 1;
         const ny = segY + 1;
 
-        // Perfectly aligns the mesh edges to the 5m data grid
-        const geometry = new THREE.PlaneGeometry((cols - 1) * res, (rows - 1) * res, segX, segY);
+        const geometry = new THREE.PlaneGeometry(cols * res, rows * res, segX, segY);
         geometry.deleteAttribute('uv');
 
         const pos = geometry.attributes.position.array;
@@ -433,30 +432,33 @@ async function loadTileData(key) {
             }
         }
 
+        // Attach vertex colors and rotate flat onto the horizontal XZ plane
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.rotateX(-Math.PI / 2);
         
-        const chunkCenterX = startCol * res + ((cols - 1) * res) / 2;
-        const chunkCenterZ = startRow * res + ((rows - 1) * res) / 2;
-        geometry.translate(chunkCenterX, 0, chunkCenterZ);
+	const chunkCenterX = startCol * res + (cols * res) / 2;
+	const chunkCenterZ = startRow * res + (rows * res) / 2;
+	geometry.translate(chunkCenterX, 0, chunkCenterZ);
 
-        geometry.attributes.position.needsUpdate = true;
-        geometry.computeVertexNormals(); 
-        geometry.computeBoundingSphere();
+	// Force Three.js to update the mesh and calculate light bounce angles
+	geometry.attributes.position.needsUpdate = true;
+	geometry.computeVertexNormals(); 
+	geometry.computeBoundingSphere();
 
         const currentOpacity = parseFloat(document.getElementById('opacitySlider').value);
         
         const occluderMat = new THREE.MeshBasicMaterial({
-            colorWrite: false, depthWrite: true, side: THREE.DoubleSide
+            colorWrite: false,
+            depthWrite: true,
+            side: THREE.DoubleSide
         });
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-        // 1. Base terrain material (Phong supports per-pixel lighting for sharp details)
-        const colorMat = new THREE.MeshPhongMaterial({
+        // 1. Shaded geology layer with flatShading enabled for faceted ridge lighting
+        const colorMat = new THREE.MeshLambertMaterial({
             vertexColors: true,
-            flatShading: false,
-            shininess: 0, 
+            flatShading: true,
             side: THREE.DoubleSide,
             transparent: true,
             opacity: currentOpacity,
@@ -465,44 +467,34 @@ async function loadTileData(key) {
             polygonOffsetFactor: -1,
             polygonOffsetUnits: -1
         });
-
-        // 2. Shader injection: dynamically draws white lines on ridges and rock boundaries
-        colorMat.onBeforeCompile = (shader) => {
-            shader.fragmentShader = shader.fragmentShader.replace(
-                '#include <dithering_fragment>',
-                `
-                #include <dithering_fragment>
-                vec3 viewDir = normalize(vViewPosition);
-                float ndotv = abs(dot(normal, viewDir));
-                float ridgeEdge = 1.0 - smoothstep(0.12, 0.28, ndotv);
-                
-                vec3 colGrad = fwidth(vColor);
-                float unitBorder = smoothstep(0.05, 0.15, length(colGrad));
-                
-                float whiteLine = max(ridgeEdge * 0.85, unitBorder * 0.95);
-                gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), whiteLine);
-                `
-            );
-        };
-
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
+
+        // 2. Outcrop-style white wireframe overlay for ridge and edge lines
+        const wireMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.15,
+            depthWrite: false
+        });
+        const wireMesh = new THREE.Mesh(geometry, wireMat);
+        wireMesh.renderOrder = 2;
+        
         colorMesh.userData = { lithBuffer: lithBuffer, startCol: startCol, startRow: startRow, cols: cols };
 
         const group = new THREE.Group();
         group.add(occluderMesh);
         group.add(colorMesh);
+        group.add(wireMesh);
         scene.add(group);
         
         activeTiles[key] = { isLoaded: true, group: group, dem: demBuffer, lith: lithBuffer, cols: cols, rows: rows };
-        
-        // This confirms on your phone screen which Stride version is actively running
-        document.getElementById('infoText').innerHTML = \`Tiles: \${Object.keys(activeTiles).length} (Stride: \${STRIDE})\`;
+        document.getElementById('infoText').innerHTML = `Tiles active: ${Object.keys(activeTiles).length}`;
     } catch(e) {
         console.error("Failed to load tile", key, e);
     }
 }
-
 function sampleCell(x, z) {
     const res = globalMeta.resolution, ts = globalMeta.tile_size;
     const col = Math.floor(x / res), row = Math.floor(z / res);
