@@ -143,6 +143,7 @@ proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.31213333333334 +lon_0=114.17855555
 document.getElementById('btnLiveMode').addEventListener('click', startLiveMode);
 document.getElementById('btnMapMode').addEventListener('click', openMapMode);
 document.getElementById('confirmMapBtn').addEventListener('click', confirmMapLocation);
+document.getElementById('btnBack').addEventListener('click', returnToMenu);
 
 function generateColors(dictionary) {
     rockColors[0] = new THREE.Color("white"); 
@@ -223,10 +224,45 @@ function showUIElements() {
     document.getElementById('bottomSliders').style.display = 'block';
     document.getElementById('crosshair').style.display = 'block';
     document.getElementById('compassBox').style.display = 'block';
+    document.getElementById('btnBack').style.display = 'block';
     updateStrideHudDisplay();
 }
 
+function returnToMenu() {
+    // 1. Stop video stream if active
+    const video = document.getElementById('cameraFeed');
+    if (video && video.srcObject) {
+        const stream = video.srcObject;
+        stream.getTracks().forEach(track => track.stop());
+        video.srcObject = null;
+        video.style.display = 'none';
+    }
+
+    // 2. Stop GPS watcher
+    if (geoWatchId !== null) {
+        navigator.geolocation.clearWatch(geoWatchId);
+        geoWatchId = null;
+    }
+
+    // 3. Hide all AR & 3D HUD elements
+    document.getElementById('ui').style.display = 'none';
+    document.getElementById('bottomSliders').style.display = 'none';
+    document.getElementById('crosshair').style.display = 'none';
+    document.getElementById('compassBox').style.display = 'none';
+    document.getElementById('explanationBox').style.display = 'none';
+    document.getElementById('btnBack').style.display = 'none';
+
+    // 4. Reset mode and show main menu
+    currentMode = null;
+    document.getElementById('menuScreen').style.display = 'flex';
+}
+
 async function loadAppMetadata() {
+    if (globalMeta) {
+        // Already loaded once, continue directly
+        initThreeJS();
+        return;
+    }
     document.getElementById('infoText').innerText = "Connecting to tile server...";
     globalMeta = await (await fetch('data/meta.json')).json();
     generateColors(globalMeta.rock_dictionary);
@@ -234,6 +270,17 @@ async function loadAppMetadata() {
 }
 
 function initThreeJS() {
+    if (renderer) {
+        // Renderer and scene already initialized
+        if (currentMode === 'live') {
+            startGPSWatcher(); 
+        } else if (currentMode === 'map') {
+            setCameraToLocation(selectedLat, selectedLon);
+            document.getElementById('gpsText').innerText = "Mode: Virtual Map View";
+        }
+        return;
+    }
+
     scene = new THREE.Scene();
     const initialDistance = parseInt(document.getElementById('viewDistance').value);
     scene.fog = new THREE.Fog(0x87CEEB, initialDistance * 0.5, initialDistance);

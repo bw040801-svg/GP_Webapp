@@ -45,15 +45,25 @@
         #cameraFeed { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: -1; display: none; }
         canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
         
+        /* Back Button */
+        #btnBack {
+            position: absolute; top: 12px; left: 12px; z-index: 30;
+            background: rgba(0, 0, 0, 0.75); color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.35); padding: 8px 16px;
+            border-radius: 6px; font-size: 0.9em; font-weight: bold;
+            cursor: pointer; display: none;
+        }
+
         #ui { 
-            position: absolute; top: 12px; left: 12px; color: #ffffff; 
+            position: absolute; top: 58px; left: 12px; color: #ffffff; 
             background: rgba(0, 0, 0, 0.65); padding: 10px 14px; border-radius: 6px; 
             line-height: 1.5; z-index: 10; max-width: 280px; pointer-events: none;
             display: none;
         }
         
+        /* Shifted downward to comfortably clear the HUD text */
         #explanationBox {
-            position: absolute; top: 160px; left: 12px; color: #ffffff;
+            position: absolute; top: 240px; left: 12px; color: #ffffff;
             background: rgba(0, 0, 0, 0.8); padding: 10px 14px; border-radius: 6px; 
             line-height: 1.4; z-index: 10; max-width: 280px; pointer-events: none;
             font-size: 0.9em; border-left: 4px solid #007bff; display: none; 
@@ -99,12 +109,13 @@
     </div>
 
     <!-- 3. Main 3D / AR UI -->
+    <button id="btnBack">← Menu</button>
     <video id="cameraFeed" autoplay playsinline></video>
     
     <div id="ui">
         <div id="infoText">Awaiting initialization...</div>
         <div id="gpsText" style="font-size: 0.8em; color:#aaa; margin-top: 5px;">GPS: Waiting...</div>
-	<div id="fpsText" style="font-size:0.8em;color:#ff0"></div>
+        <div id="fpsText" style="font-size:0.8em;color:#ff0"></div>
     </div>
     
     <div id="explanationBox"></div>
@@ -128,6 +139,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=11"></script>
 </body>
 </html>
