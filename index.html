@@ -61,7 +61,6 @@
             display: none;
         }
         
-        /* Shifted downward to comfortably clear the HUD text */
         #explanationBox {
             position: absolute; top: 240px; left: 12px; color: #ffffff;
             background: rgba(0, 0, 0, 0.8); padding: 10px 14px; border-radius: 6px; 
@@ -82,7 +81,7 @@
             padding: 15px; border-radius: 8px; color: white;
             z-index: 10; pointer-events: auto; display: none; box-sizing: border-box;
         }
-        .slider-row { display: flex; flex-direction: column; margin-bottom: 15px; }
+        .slider-row { display: flex; flex-direction: column; margin-bottom: 12px; }
         .slider-row:last-child { margin-bottom: 0; }
         .slider-row input { width: 100%; margin-top: 5px; }
         
@@ -123,6 +122,10 @@
     
     <div id="bottomSliders">
         <div class="slider-row">
+            <label for="heightSlider">Camera Height: +<span id="heightVal">10</span>m</label>
+            <input type="range" id="heightSlider" min="2" max="300" step="2" value="10">
+        </div>
+        <div class="slider-row">
             <label for="viewDistance">Render Distance: <span id="distVal">3000</span>m</label>
             <input type="range" id="viewDistance" min="500" max="15000" step="500" value="3000">
         </div>
@@ -139,6 +142,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=12"></script>
 </body>
 </html>

@@ -13,6 +13,8 @@ let selectedLat = 22.3193, selectedLon = 114.1694;
 let yawOffset = 0, pitchOffset = 0;
 let isDragging = false, previousTouch = { x: 0, y: 0 };
 let gpsSceneX = 0, gpsSceneZ = 0;
+let currentGroundElev = 20;
+let heightOffset = 10;
 
 const CURRENT_STRIDE = 1; // 1 = 5m mesh (highest detail), 2 = 10m mesh, 4 = 20m mesh
 
@@ -259,7 +261,6 @@ function returnToMenu() {
 
 async function loadAppMetadata() {
     if (globalMeta) {
-        // Already loaded once, continue directly
         initThreeJS();
         return;
     }
@@ -271,7 +272,6 @@ async function loadAppMetadata() {
 
 function initThreeJS() {
     if (renderer) {
-        // Renderer and scene already initialized
         if (currentMode === 'live') {
             startGPSWatcher(); 
         } else if (currentMode === 'map') {
@@ -305,6 +305,13 @@ function initThreeJS() {
 
     raycaster = new THREE.Raycaster();
     centerScreen = new THREE.Vector2(0, 0);
+
+    const heightSlider = document.getElementById('heightSlider');
+    heightSlider.addEventListener('input', (e) => {
+        heightOffset = parseFloat(e.target.value);
+        document.getElementById('heightVal').innerText = heightOffset;
+        cameraGroup.position.y = currentGroundElev + heightOffset;
+    });
 
     const distSlider = document.getElementById('viewDistance');
     distSlider.addEventListener('input', (e) => document.getElementById('distVal').innerText = e.target.value);
@@ -381,7 +388,9 @@ async function setCameraToLocation(lat, lon) {
         gpsGroundElev = Math.max(gpsGroundElev, intersects[0].point.y);
     }
 
-    cameraGroup.position.set(gpsSceneX, gpsGroundElev + 2, gpsSceneZ);
+    currentGroundElev = gpsGroundElev;
+    heightOffset = parseFloat(document.getElementById('heightSlider').value);
+    cameraGroup.position.set(gpsSceneX, currentGroundElev + heightOffset, gpsSceneZ);
 }
 
 function startGPSWatcher() {
@@ -568,7 +577,7 @@ function pickCentreRay() {
     const step = globalMeta.resolution;
     for (let t = step; t < camera.far; t += step) {
         const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
-        if (dir.y > 0 && y > 1000) break; // Looking up into the sky
+        if (dir.y > 0 && y > 2000) break; // Elevated ceiling for high mountain viewpoints
         const cell = sampleCell(x, z);
         if (cell && y <= cell.elev) return { x, y, z, rock: cell.rock };
     }
