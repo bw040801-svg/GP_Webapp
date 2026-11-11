@@ -231,10 +231,12 @@ function initThreeJS() {
 
     controls = new THREE.DeviceOrientationControls(camera);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-    sun.position.set(0, 5000, 0); 
+    // Oblique sun angle (South-East sky) to create strong hillshade contrast
+    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    sun.position.set(3000, 2500, 3000); 
     scene.add(sun);
-    scene.add(new THREE.AmbientLight(0x666666));
+    // Slightly darker ambient light so the shadows in the valleys look deeper
+    scene.add(new THREE.AmbientLight(0x444444));
 
     raycaster = new THREE.Raycaster();
     centerScreen = new THREE.Vector2(0, 0);
@@ -453,8 +455,10 @@ async function loadTileData(key) {
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
+        // 1. Shaded geology layer with flatShading enabled for faceted ridge lighting
         const colorMat = new THREE.MeshLambertMaterial({
             vertexColors: true,
+            flatShading: true,
             side: THREE.DoubleSide,
             transparent: true,
             opacity: currentOpacity,
@@ -465,12 +469,24 @@ async function loadTileData(key) {
         });
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
+
+        // 2. Outcrop-style white wireframe overlay for ridge and edge lines
+        const wireMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.15,
+            depthWrite: false
+        });
+        const wireMesh = new THREE.Mesh(geometry, wireMat);
+        wireMesh.renderOrder = 2;
         
         colorMesh.userData = { lithBuffer: lithBuffer, startCol: startCol, startRow: startRow, cols: cols };
 
         const group = new THREE.Group();
         group.add(occluderMesh);
         group.add(colorMesh);
+        group.add(wireMesh);
         scene.add(group);
         
         activeTiles[key] = { isLoaded: true, group: group, dem: demBuffer, lith: lithBuffer, cols: cols, rows: rows };
