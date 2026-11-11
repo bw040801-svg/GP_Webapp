@@ -455,10 +455,10 @@ async function loadTileData(key) {
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-        // 1. Shaded geology layer with flatShading enabled for faceted ridge lighting
+        // Shaded geology layer with custom ridge/silhouette & rock-boundary outlines
         const colorMat = new THREE.MeshLambertMaterial({
             vertexColors: true,
-            flatShading: true,
+            flatShading: false, // Smooth normals allow accurate silhouette & ridge detection
             side: THREE.DoubleSide,
             transparent: true,
             opacity: currentOpacity,
@@ -467,26 +467,36 @@ async function loadTileData(key) {
             polygonOffsetFactor: -1,
             polygonOffsetUnits: -1
         });
+
+        colorMat.onBeforeCompile = (shader) => {
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <dithering_fragment>',
+                `
+                #include <dithering_fragment>
+                
+                // 1. White lines on mountain edges & silhouette ridges (grazing view angles)
+                vec3 viewDir = normalize(vViewPosition);
+                float ndotv = abs(dot(normal, viewDir));
+                float ridgeEdge = 1.0 - smoothstep(0.12, 0.28, ndotv);
+
+                // 2. White lines on geological unit boundaries (where rock colors meet)
+                vec3 colGrad = fwidth(vColor);
+                float unitBorder = smoothstep(0.02, 0.08, length(colGrad));
+
+                // Combine both lines and blend white onto the shaded terrain
+                float whiteLine = max(ridgeEdge * 0.85, unitBorder * 0.9);
+                gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), whiteLine);
+                `
+            );
+        };
+
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
-
-        // 2. Outcrop-style white wireframe overlay for ridge and edge lines
-        const wireMat = new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.15,
-            depthWrite: false
-        });
-        const wireMesh = new THREE.Mesh(geometry, wireMat);
-        wireMesh.renderOrder = 2;
-        
         colorMesh.userData = { lithBuffer: lithBuffer, startCol: startCol, startRow: startRow, cols: cols };
 
         const group = new THREE.Group();
         group.add(occluderMesh);
         group.add(colorMesh);
-        group.add(wireMesh);
         scene.add(group);
         
         activeTiles[key] = { isLoaded: true, group: group, dem: demBuffer, lith: lithBuffer, cols: cols, rows: rows };
