@@ -14,6 +14,8 @@ let yawOffset = 0, pitchOffset = 0;
 let isDragging = false, previousTouch = { x: 0, y: 0 };
 let gpsSceneX = 0, gpsSceneZ = 0;
 
+const CURRENT_STRIDE = 1; // 1 = 5m mesh (highest detail), 2 = 10m mesh, 4 = 20m mesh
+
 const GEOLOGY_DICT = {
     "Cmp": "Carboniferous Mai Po Member: mainly metasiltstone, metasandstone; graphite-bearing",
     "Cts": "Carboniferous Tai Shek Mo Member: mainly metasandstone with metaconglomerate and phyllite",
@@ -150,6 +152,23 @@ function generateColors(dictionary) {
     }
 }
 
+function updateStrideHudDisplay() {
+    let el = document.getElementById('strideText');
+    if (!el) {
+        const ui = document.getElementById('ui');
+        if (ui) {
+            el = document.createElement('div');
+            el.id = 'strideText';
+            el.style.cssText = 'font-size:0.8em; color:#00ffff; margin-top:3px;';
+            ui.appendChild(el);
+        }
+    }
+    if (el && globalMeta) {
+        const loadedCount = Object.keys(activeTiles).filter(k => activeTiles[k].isLoaded).length;
+        el.innerText = `Stride: ${CURRENT_STRIDE} (${CURRENT_STRIDE * globalMeta.resolution}m mesh) | Tiles: ${loadedCount}`;
+    }
+}
+
 function openMapMode() {
     document.getElementById('menuScreen').style.display = 'none';
     document.getElementById('mapScreen').style.display = 'block';
@@ -204,9 +223,9 @@ function showUIElements() {
     document.getElementById('bottomSliders').style.display = 'block';
     document.getElementById('crosshair').style.display = 'block';
     document.getElementById('compassBox').style.display = 'block';
+    updateStrideHudDisplay();
 }
 
-// Data Architecture Change: We only load metadata initially. Tiles are fetched on-demand.
 async function loadAppMetadata() {
     document.getElementById('infoText').innerText = "Connecting to tile server...";
     globalMeta = await (await fetch('data/meta.json')).json();
@@ -231,11 +250,10 @@ function initThreeJS() {
 
     controls = new THREE.DeviceOrientationControls(camera);
 
-    // Oblique sun angle (South-East sky) to create strong hillshade contrast
+    // Oblique sun angle (South-East sky) to create hillshade relief on ridges
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
     sun.position.set(3000, 2500, 3000); 
     scene.add(sun);
-    // Slightly darker ambient light so the shadows in the valleys look deeper
     scene.add(new THREE.AmbientLight(0x444444));
 
     raycaster = new THREE.Raycaster();
@@ -256,15 +274,14 @@ function initThreeJS() {
     opSlider.addEventListener('input', (e) => {
         const op = parseFloat(e.target.value);
         document.getElementById('opacityVal').innerText = op;
-        // Update opacity across all currently loaded tiles
         for (let key in activeTiles) {
-            if (activeTiles[key].isLoaded) {
+            if (activeTiles[key].isLoaded && activeTiles[key].group.children[1]) {
                 activeTiles[key].group.children[1].material.opacity = op;
             }
         }
     });
 
-    // Invisible touch controls for calibration
+    // Touch controls for manual calibration
     renderer.domElement.addEventListener('touchstart', (e) => {
         isDragging = true;
         previousTouch.x = e.touches[0].clientX;
@@ -305,11 +322,11 @@ async function setCameraToLocation(lat, lon) {
     const dist = parseInt(document.getElementById('viewDistance').value);
     await checkAndLoadTiles(dist);
 
-    // 1. Sample 5m DEM height
+    // 1. Exact 5m DEM height lookup
     const ground = sampleCell(gpsSceneX, gpsSceneZ);
     let gpsGroundElev = ground ? ground.elev : 20;
 
-    // 2. Also check the strided 3D mesh height so the camera never spawns underground on slopes
+    // 2. Downward raycast against 3D mesh surface to prevent underground camera spawning
     raycaster.set(new THREE.Vector3(gpsSceneX, 3000, gpsSceneZ), new THREE.Vector3(0, -1, 0));
     const targetMeshes = Object.values(activeTiles).filter(t => t.isLoaded).map(t => t.group.children[1]);
     const intersects = raycaster.intersectObjects(targetMeshes);
@@ -383,6 +400,7 @@ async function checkAndLoadTiles(distanceMeters) {
     }
     
     await Promise.all(loadPromises);
+    updateStrideHudDisplay();
 }
 
 async function loadTileData(key) {
@@ -406,14 +424,15 @@ async function loadTileData(key) {
         const cols = endCol - startCol;
         const rows = endRow - startRow;
 
-        const STRIDE = 4;   // 1 = 5m mesh, 2 = 10m, 4 = 20m, 8 = 40m
+        const STRIDE = CURRENT_STRIDE;
         const res = globalMeta.resolution;
         const segX = Math.ceil((cols - 1) / STRIDE);
         const segY = Math.ceil((rows - 1) / STRIDE);
         const nx = segX + 1;
         const ny = segY + 1;
 
-        const geometry = new THREE.PlaneGeometry(cols * res, rows * res, segX, segY);
+        // Perfectly aligns mesh edges across 5km tile borders
+        const geometry = new THREE.PlaneGeometry((cols - 1) * res, (rows - 1) * res, segX, segY);
         geometry.deleteAttribute('uv');
 
         const pos = geometry.attributes.position.array;
@@ -432,21 +451,20 @@ async function loadTileData(key) {
             }
         }
 
-        // Attach vertex colors and rotate flat onto the horizontal XZ plane
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.rotateX(-Math.PI / 2);
         
-	const chunkCenterX = startCol * res + (cols * res) / 2;
-	const chunkCenterZ = startRow * res + (rows * res) / 2;
-	geometry.translate(chunkCenterX, 0, chunkCenterZ);
+        const chunkCenterX = startCol * res + ((cols - 1) * res) / 2;
+        const chunkCenterZ = startRow * res + ((rows - 1) * res) / 2;
+        geometry.translate(chunkCenterX, 0, chunkCenterZ);
 
-	// Force Three.js to update the mesh and calculate light bounce angles
-	geometry.attributes.position.needsUpdate = true;
-	geometry.computeVertexNormals(); 
-	geometry.computeBoundingSphere();
+        geometry.attributes.position.needsUpdate = true;
+        geometry.computeVertexNormals(); 
+        geometry.computeBoundingSphere();
 
         const currentOpacity = parseFloat(document.getElementById('opacitySlider').value);
         
+        // Depth-masking occluder mesh for AR feed
         const occluderMat = new THREE.MeshBasicMaterial({
             colorWrite: false,
             depthWrite: true,
@@ -455,10 +473,11 @@ async function loadTileData(key) {
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-        // 1. Shaded geology layer with flatShading enabled for faceted ridge lighting
-        const colorMat = new THREE.MeshLambertMaterial({
+        // Shaded terrain material with Outcrop-style silhouette & rock boundary shader
+        const colorMat = new THREE.MeshPhongMaterial({
             vertexColors: true,
-            flatShading: true,
+            flatShading: false,
+            shininess: 0,
             side: THREE.DoubleSide,
             transparent: true,
             opacity: currentOpacity,
@@ -467,34 +486,44 @@ async function loadTileData(key) {
             polygonOffsetFactor: -1,
             polygonOffsetUnits: -1
         });
+
+        colorMat.onBeforeCompile = (shader) => {
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <dithering_fragment>',
+                `
+                #include <dithering_fragment>
+                
+                // 1. White highlights along mountain ridges & grazing silhouette edges
+                vec3 viewDir = normalize(vViewPosition);
+                float ndotv = abs(dot(normal, viewDir));
+                float ridgeEdge = 1.0 - smoothstep(0.12, 0.28, ndotv);
+
+                // 2. Crisp white boundary lines where geological unit colors meet
+                vec3 colGrad = fwidth(vColor);
+                float unitBorder = smoothstep(0.05, 0.15, length(colGrad));
+
+                float whiteLine = max(ridgeEdge * 0.85, unitBorder * 0.95);
+                gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), whiteLine);
+                `
+            );
+        };
+
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
-
-        // 2. Outcrop-style white wireframe overlay for ridge and edge lines
-        const wireMat = new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.15,
-            depthWrite: false
-        });
-        const wireMesh = new THREE.Mesh(geometry, wireMat);
-        wireMesh.renderOrder = 2;
-        
         colorMesh.userData = { lithBuffer: lithBuffer, startCol: startCol, startRow: startRow, cols: cols };
 
         const group = new THREE.Group();
         group.add(occluderMesh);
         group.add(colorMesh);
-        group.add(wireMesh);
         scene.add(group);
         
         activeTiles[key] = { isLoaded: true, group: group, dem: demBuffer, lith: lithBuffer, cols: cols, rows: rows };
-        document.getElementById('infoText').innerHTML = `Tiles active: ${Object.keys(activeTiles).length}`;
+        updateStrideHudDisplay();
     } catch(e) {
         console.error("Failed to load tile", key, e);
     }
 }
+
 function sampleCell(x, z) {
     const res = globalMeta.resolution, ts = globalMeta.tile_size;
     const col = Math.floor(x / res), row = Math.floor(z / res);
@@ -513,7 +542,7 @@ function pickCentreRay() {
     const step = globalMeta.resolution;
     for (let t = step; t < camera.far; t += step) {
         const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
-        if (dir.y > 0 && y > 1000) break;          // pointing at the sky
+        if (dir.y > 0 && y > 1000) break; // Looking up into the sky
         const cell = sampleCell(x, z);
         if (cell && y <= cell.elev) return { x, y, z, rock: cell.rock };
     }
@@ -572,6 +601,10 @@ function animate(now = 0) {
         document.getElementById('fpsText').innerText = frames + " fps";
         frames = 0; fpsStart = now;
     }
-    if (now - lastHud > 150) { lastHud = now; updateCompass(); updateRaycaster(); }
+    if (now - lastHud > 150) { 
+        lastHud = now; 
+        updateCompass(); 
+        updateRaycaster(); 
+    }
     renderer.render(scene, camera);
 }
