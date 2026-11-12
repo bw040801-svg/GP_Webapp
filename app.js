@@ -404,7 +404,7 @@ function startGPSWatcher() {
         let lat = position.coords.latitude;
         let lon = position.coords.longitude;
         if (lat > 50) { 
-            lat = 22.411; lon = 114.124; 
+            lat = 22.278; lon = 114.146;  
             document.getElementById('gpsText').innerText = "GPS: Spoofed to HK (Tai Mo Shan)";
         } else {
             document.getElementById('gpsText').innerText = `GPS: Live (${position.coords.accuracy.toFixed(1)}m)`;
