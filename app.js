@@ -1,4 +1,4 @@
-let scene, camera, cameraGroup, renderer, controls;
+let scene, camera, cameraGroup, pitchGroup, renderer, controls;
 let activeTiles = {}; // Stores dynamically loaded terrain tiles
 let raycaster, centerScreen;
 let globalMeta;
@@ -296,8 +296,10 @@ function initThreeJS() {
     
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, initialDistance);
     cameraGroup = new THREE.Group();
+    pitchGroup = new THREE.Group();
     scene.add(cameraGroup);
-    cameraGroup.add(camera);
+    cameraGroup.add(pitchGroup);
+    pitchGroup.add(camera);
 
     // Disable antialias and cap pixelRatio at 1.5 to reduce iOS WebGL VRAM pressure
     renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
@@ -357,7 +359,14 @@ function initThreeJS() {
             const deltaY = e.touches[0].clientY - previousTouch.y;
             yawOffset += deltaX * 0.002;
             pitchOffset += deltaY * 0.002;
-            cameraGroup.rotation.set(pitchOffset, yawOffset, 0, 'YXZ');
+
+            // Clamp pitch so the view cannot flip upside down
+            pitchOffset = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitchOffset));
+
+            // Apply yaw to outer group and pitch to inner group so vertical drag always pitches cleanly
+            cameraGroup.rotation.y = yawOffset;
+            pitchGroup.rotation.x = pitchOffset;
+
             previousTouch.x = e.touches[0].clientX;
             previousTouch.y = e.touches[0].clientY;
         }
@@ -446,7 +455,6 @@ async function checkAndLoadTiles(distanceMeters) {
         for (let c = centerTc - radiusTiles; c <= centerTc + radiusTiles; c++) {
             const tileStr = `${r}_${c}`;
             if (globalMeta.valid_tiles.includes(tileStr)) {
-                // Only load tiles whose bounding area actually intersects the view radius
                 const tileCenterX = (c + 0.5) * tileMeters;
                 const tileCenterZ = (r + 0.5) * tileMeters;
                 const distToCenter = Math.hypot(tileCenterX - gpsSceneX, tileCenterZ - gpsSceneZ);
@@ -470,7 +478,7 @@ async function checkAndLoadTiles(distanceMeters) {
         }
     }
 
-    // Load newly required or LOD-updated tiles sequentially in small batches to avoid memory spikes
+    // Load newly required or LOD-updated tiles sequentially to avoid memory spikes
     for (let key of requiredTiles) {
         if (!activeTiles[key]) {
             const [tr, tc] = key.split('_').map(Number);
@@ -495,7 +503,6 @@ async function loadTileData(key, stride) {
             return;
         }
 
-        // Abort if tile was unloaded while fetching
         if (!activeTiles[key] || activeTiles[key].stride !== stride) return;
 
         const demBuffer = new Float32Array(await demRes.arrayBuffer());
