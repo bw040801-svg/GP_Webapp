@@ -1,4 +1,4 @@
-let scene, camera, cameraGroup, pitchGroup, renderer, controls;
+let scene, camera, cameraGroup, renderer, controls;
 let activeTiles = {}; // Stores dynamically loaded terrain tiles
 let raycaster, centerScreen;
 let globalMeta;
@@ -15,6 +15,12 @@ let isDragging = false, previousTouch = { x: 0, y: 0 };
 let gpsSceneX = 0, gpsSceneZ = 0;
 let currentGroundElev = 20;
 let heightOffset = 10;
+
+// Reusable quaternion helpers for drift-free pitch/yaw camera calibration
+const worldUp = new THREE.Vector3(0, 1, 0);
+const localRight = new THREE.Vector3(1, 0, 0);
+const yawQuat = new THREE.Quaternion();
+const pitchQuat = new THREE.Quaternion();
 
 const GEOLOGY_DICT = {
     "Cmp": "Carboniferous Mai Po Member: mainly metasiltstone, metasandstone; graphite-bearing",
@@ -296,10 +302,8 @@ function initThreeJS() {
     
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, initialDistance);
     cameraGroup = new THREE.Group();
-    pitchGroup = new THREE.Group();
     scene.add(cameraGroup);
-    cameraGroup.add(pitchGroup);
-    pitchGroup.add(camera);
+    cameraGroup.add(camera);
 
     // Disable antialias and cap pixelRatio at 1.5 to reduce iOS WebGL VRAM pressure
     renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
@@ -360,12 +364,8 @@ function initThreeJS() {
             yawOffset += deltaX * 0.002;
             pitchOffset += deltaY * 0.002;
 
-            // Clamp pitch so the view cannot flip upside down
+            // Clamp vertical pitch so the view cannot flip upside down
             pitchOffset = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitchOffset));
-
-            // Apply yaw to outer group and pitch to inner group so vertical drag always pitches cleanly
-            cameraGroup.rotation.y = yawOffset;
-            pitchGroup.rotation.x = pitchOffset;
 
             previousTouch.x = e.touches[0].clientX;
             previousTouch.y = e.touches[0].clientY;
@@ -478,7 +478,7 @@ async function checkAndLoadTiles(distanceMeters) {
         }
     }
 
-    // Load newly required or LOD-updated tiles sequentially to avoid memory spikes
+    // Load newly required or LOD-updated tiles sequentially in small batches to avoid memory spikes
     for (let key of requiredTiles) {
         if (!activeTiles[key]) {
             const [tr, tc] = key.split('_').map(Number);
@@ -673,6 +673,15 @@ let lastHud = 0, frames = 0, fpsStart = 0;
 function animate(now = 0) {
     requestAnimationFrame(animate);
     controls.update();
+
+    // 1. Apply horizontal compass calibration around true vertical (World Up)
+    yawQuat.setFromAxisAngle(worldUp, yawOffset);
+    camera.quaternion.premultiply(yawQuat);
+
+    // 2. Apply vertical tilt around the screen's own horizontal axis (Local Right)
+    pitchQuat.setFromAxisAngle(localRight, pitchOffset);
+    camera.quaternion.multiply(pitchQuat);
+
     frames++;
     if (now - fpsStart >= 1000) {
         document.getElementById('fpsText').innerText = frames + " fps";
