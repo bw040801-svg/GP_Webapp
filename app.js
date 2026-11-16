@@ -16,8 +16,6 @@ let gpsSceneX = 0, gpsSceneZ = 0;
 let currentGroundElev = 20;
 let heightOffset = 10;
 
-const CURRENT_STRIDE = 1; // 1 = 5m mesh (highest detail), 2 = 10m mesh, 4 = 20m mesh
-
 const GEOLOGY_DICT = {
     "Cmp": "Carboniferous Mai Po Member: mainly metasiltstone, metasandstone; graphite-bearing",
     "Cts": "Carboniferous Tai Shek Mo Member: mainly metasandstone with metaconglomerate and phyllite",
@@ -155,6 +153,19 @@ function generateColors(dictionary) {
     }
 }
 
+// Distance-based LOD calculation to stay strictly within iOS WebGL memory limits
+function getOptimalStrideForTile(tr, tc) {
+    const tileMeters = globalMeta.tile_size * globalMeta.resolution;
+    const tileCenterX = (tc + 0.5) * tileMeters;
+    const tileCenterZ = (tr + 0.5) * tileMeters;
+    const dist = Math.hypot(tileCenterX - gpsSceneX, tileCenterZ - gpsSceneZ);
+
+    if (dist <= 2800) return 1;      // 5m mesh for immediate slopes
+    if (dist <= 5000) return 4;      // 20m mesh (94% less memory than stride 1)
+    if (dist <= 8500) return 8;      // 40m mesh (98.4% less memory)
+    return 16;                       // 80m mesh for distant horizon peaks
+}
+
 function updateStrideHudDisplay() {
     let el = document.getElementById('strideText');
     if (!el) {
@@ -167,8 +178,10 @@ function updateStrideHudDisplay() {
         }
     }
     if (el && globalMeta) {
-        const loadedCount = Object.keys(activeTiles).filter(k => activeTiles[k].isLoaded).length;
-        el.innerText = `Stride: ${CURRENT_STRIDE} (${CURRENT_STRIDE * globalMeta.resolution}m mesh) | Tiles: ${loadedCount}`;
+        const loadedTiles = Object.values(activeTiles).filter(t => t.isLoaded);
+        const strides = [...new Set(loadedTiles.map(t => t.stride))].sort((a, b) => a - b);
+        const strideStr = strides.length ? strides.join('/') : '1';
+        el.innerText = `LOD Stride: ${strideStr} | Tiles: ${loadedTiles.length}`;
     }
 }
 
@@ -231,7 +244,6 @@ function showUIElements() {
 }
 
 function returnToMenu() {
-    // 1. Stop video stream if active
     const video = document.getElementById('cameraFeed');
     if (video && video.srcObject) {
         const stream = video.srcObject;
@@ -240,13 +252,11 @@ function returnToMenu() {
         video.style.display = 'none';
     }
 
-    // 2. Stop GPS watcher
     if (geoWatchId !== null) {
         navigator.geolocation.clearWatch(geoWatchId);
         geoWatchId = null;
     }
 
-    // 3. Hide all AR & 3D HUD elements
     document.getElementById('ui').style.display = 'none';
     document.getElementById('bottomSliders').style.display = 'none';
     document.getElementById('crosshair').style.display = 'none';
@@ -254,7 +264,6 @@ function returnToMenu() {
     document.getElementById('explanationBox').style.display = 'none';
     document.getElementById('btnBack').style.display = 'none';
 
-    // 4. Reset mode and show main menu
     currentMode = null;
     document.getElementById('menuScreen').style.display = 'flex';
 }
@@ -290,14 +299,14 @@ function initThreeJS() {
     scene.add(cameraGroup);
     cameraGroup.add(camera);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    // Disable antialias and cap pixelRatio at 1.5 to reduce iOS WebGL VRAM pressure
+    renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     document.body.appendChild(renderer.domElement);
 
     controls = new THREE.DeviceOrientationControls(camera);
 
-    // Oblique sun angle (South-East sky) to create hillshade relief on ridges
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
     sun.position.set(3000, 2500, 3000); 
     scene.add(sun);
@@ -335,7 +344,6 @@ function initThreeJS() {
         }
     });
 
-    // Touch controls for manual calibration
     renderer.domElement.addEventListener('touchstart', (e) => {
         isDragging = true;
         previousTouch.x = e.touches[0].clientX;
@@ -376,11 +384,9 @@ async function setCameraToLocation(lat, lon) {
     const dist = parseInt(document.getElementById('viewDistance').value);
     await checkAndLoadTiles(dist);
 
-    // 1. Exact 5m DEM height lookup
     const ground = sampleCell(gpsSceneX, gpsSceneZ);
     let gpsGroundElev = ground ? ground.elev : 20;
 
-    // 2. Downward raycast against 3D mesh surface to prevent underground camera spawning
     raycaster.set(new THREE.Vector3(gpsSceneX, 3000, gpsSceneZ), new THREE.Vector3(0, -1, 0));
     const targetMeshes = Object.values(activeTiles).filter(t => t.isLoaded).map(t => t.group.children[1]);
     const intersects = raycaster.intersectObjects(targetMeshes);
@@ -404,7 +410,7 @@ function startGPSWatcher() {
         let lat = position.coords.latitude;
         let lon = position.coords.longitude;
         if (lat > 50) { 
-            lat = 22.278; lon = 114.146;  
+            lat = 22.411; lon = 114.124; 
             document.getElementById('gpsText').innerText = "GPS: Spoofed to HK (Tai Mo Shan)";
         } else {
             document.getElementById('gpsText').innerText = `GPS: Live (${position.coords.accuracy.toFixed(1)}m)`;
@@ -415,58 +421,82 @@ function startGPSWatcher() {
     }, { enableHighAccuracy: true, maximumAge: 0 });
 }
 
-// ----------------- TILE MANAGER LOGIC -----------------
+// ----------------- TILE & LOD MANAGER LOGIC -----------------
+function disposeTile(key) {
+    if (!activeTiles[key]) return;
+    if (activeTiles[key].isLoaded && activeTiles[key].group) {
+        scene.remove(activeTiles[key].group);
+        activeTiles[key].group.children.forEach(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+        });
+    }
+    delete activeTiles[key];
+}
+
 async function checkAndLoadTiles(distanceMeters) {
-    const centerTr = Math.floor(gpsSceneZ / (globalMeta.tile_size * globalMeta.resolution));
-    const centerTc = Math.floor(gpsSceneX / (globalMeta.tile_size * globalMeta.resolution));
+    const tileMeters = globalMeta.tile_size * globalMeta.resolution;
+    const centerTr = Math.floor(gpsSceneZ / tileMeters);
+    const centerTc = Math.floor(gpsSceneX / tileMeters);
     
-    const radiusTiles = Math.ceil(distanceMeters / (globalMeta.tile_size * globalMeta.resolution));
+    const radiusTiles = Math.ceil(distanceMeters / tileMeters);
     const requiredTiles = new Set();
     
     for (let r = centerTr - radiusTiles; r <= centerTr + radiusTiles; r++) {
         for (let c = centerTc - radiusTiles; c <= centerTc + radiusTiles; c++) {
             const tileStr = `${r}_${c}`;
             if (globalMeta.valid_tiles.includes(tileStr)) {
-                requiredTiles.add(tileStr);
+                // Only load tiles whose bounding area actually intersects the view radius
+                const tileCenterX = (c + 0.5) * tileMeters;
+                const tileCenterZ = (r + 0.5) * tileMeters;
+                const distToCenter = Math.hypot(tileCenterX - gpsSceneX, tileCenterZ - gpsSceneZ);
+                if (distToCenter <= distanceMeters + tileMeters * 0.75) {
+                    requiredTiles.add(tileStr);
+                }
             }
         }
     }
 
-    // Unload distant tiles
+    // Unload distant tiles or tiles whose LOD stride needs to change
     for (let key in activeTiles) {
         if (!requiredTiles.has(key)) {
-            if (activeTiles[key].isLoaded) {
-                scene.remove(activeTiles[key].group);
-                activeTiles[key].group.children.forEach(child => {
-                    child.geometry.dispose();
-                    child.material.dispose();
-                });
+            disposeTile(key);
+        } else if (activeTiles[key].isLoaded) {
+            const [tr, tc] = key.split('_').map(Number);
+            const targetStride = getOptimalStrideForTile(tr, tc);
+            if (activeTiles[key].stride !== targetStride) {
+                disposeTile(key);
             }
-            delete activeTiles[key];
         }
     }
 
-    // Load newly required tiles
-    const loadPromises = [];
+    // Load newly required or LOD-updated tiles sequentially in small batches to avoid memory spikes
     for (let key of requiredTiles) {
         if (!activeTiles[key]) {
-            activeTiles[key] = { isLoaded: false };
-            loadPromises.push(loadTileData(key));
+            const [tr, tc] = key.split('_').map(Number);
+            const targetStride = getOptimalStrideForTile(tr, tc);
+            activeTiles[key] = { isLoaded: false, stride: targetStride };
+            await loadTileData(key, targetStride);
         }
     }
     
-    await Promise.all(loadPromises);
     updateStrideHudDisplay();
 }
 
-async function loadTileData(key) {
+async function loadTileData(key, stride) {
     try {
         const [demRes, lithRes] = await Promise.all([
             fetch(`data/dem_${key}.bin`),
             fetch(`data/lith_${key}.bin`)
         ]);
 
-        if (!demRes.ok || !lithRes.ok) return;
+        if (!demRes.ok || !lithRes.ok) {
+            delete activeTiles[key];
+            return;
+        }
+
+        // Abort if tile was unloaded while fetching
+        if (!activeTiles[key] || activeTiles[key].stride !== stride) return;
 
         const demBuffer = new Float32Array(await demRes.arrayBuffer());
         const lithBuffer = new Uint8Array(await lithRes.arrayBuffer());
@@ -480,14 +510,12 @@ async function loadTileData(key) {
         const cols = endCol - startCol;
         const rows = endRow - startRow;
 
-        const STRIDE = CURRENT_STRIDE;
         const res = globalMeta.resolution;
-        const segX = Math.ceil((cols - 1) / STRIDE);
-        const segY = Math.ceil((rows - 1) / STRIDE);
+        const segX = Math.ceil((cols - 1) / stride);
+        const segY = Math.ceil((rows - 1) / stride);
         const nx = segX + 1;
         const ny = segY + 1;
 
-        // Perfectly aligns mesh edges across 5km tile borders
         const geometry = new THREE.PlaneGeometry((cols - 1) * res, (rows - 1) * res, segX, segY);
         geometry.deleteAttribute('uv');
 
@@ -495,9 +523,9 @@ async function loadTileData(key) {
         const colors = new Float32Array(nx * ny * 3);
         let v = 0;
         for (let r = 0; r < ny; r++) {
-            const srcR = Math.min(r * STRIDE, rows - 1);
+            const srcR = Math.min(r * stride, rows - 1);
             for (let c = 0; c < nx; c++, v++) {
-                const srcC = Math.min(c * STRIDE, cols - 1);
+                const srcC = Math.min(c * stride, cols - 1);
                 const i = srcR * cols + srcC;
                 pos[v * 3 + 2] = demBuffer[i] < -500 ? 0 : demBuffer[i];
                 const col = rockColors[lithBuffer[i]] || rockColors[0];
@@ -520,7 +548,6 @@ async function loadTileData(key) {
 
         const currentOpacity = parseFloat(document.getElementById('opacitySlider').value);
         
-        // Depth-masking occluder mesh for AR feed
         const occluderMat = new THREE.MeshBasicMaterial({
             colorWrite: false,
             depthWrite: true,
@@ -529,7 +556,6 @@ async function loadTileData(key) {
         const occluderMesh = new THREE.Mesh(geometry, occluderMat);
         occluderMesh.renderOrder = 0;
 
-        // Clean shaded terrain material (no lines or wireframe overlays)
         const colorMat = new THREE.MeshPhongMaterial({
             vertexColors: true,
             flatShading: false,
@@ -552,10 +578,19 @@ async function loadTileData(key) {
         group.add(colorMesh);
         scene.add(group);
         
-        activeTiles[key] = { isLoaded: true, group: group, dem: demBuffer, lith: lithBuffer, cols: cols, rows: rows };
+        activeTiles[key] = { 
+            isLoaded: true, 
+            stride: stride, 
+            group: group, 
+            dem: demBuffer, 
+            lith: lithBuffer, 
+            cols: cols, 
+            rows: rows 
+        };
         updateStrideHudDisplay();
     } catch(e) {
         console.error("Failed to load tile", key, e);
+        delete activeTiles[key];
     }
 }
 
@@ -577,7 +612,7 @@ function pickCentreRay() {
     const step = globalMeta.resolution;
     for (let t = step; t < camera.far; t += step) {
         const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
-        if (dir.y > 0 && y > 2000) break; // Elevated ceiling for high mountain viewpoints
+        if (dir.y > 0 && y > 2000) break;
         const cell = sampleCell(x, z);
         if (cell && y <= cell.elev) return { x, y, z, rock: cell.rock };
     }
