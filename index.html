@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Geoscientific AR Explorer</title>
+    <title>HK Geology Explorer</title>
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon-512.jpg">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
-    <!-- Google Fonts: Roboto & Material Symbols Outlined -->
+    <!-- Google Fonts: Outfit & Material Symbols Outlined -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500,0..1,0" rel="stylesheet">
     
     <!-- Leaflet CSS -->
@@ -20,7 +20,7 @@
     
     <style>
         :root {
-            /* Material Design 3 Dark Scheme (Google Maps / Earth Palette) */
+            /* Material Design 3 Dark Scheme */
             --md-sys-color-background: #131314;
             --md-sys-color-surface: #1e1f20;
             --md-sys-color-surface-container: #282a2c;
@@ -32,7 +32,6 @@
             --md-sys-color-secondary-container: #004a77;
             --md-sys-color-on-secondary-container: #c2e7ff;
             --md-sys-color-tertiary: #6dd58c;
-            --md-sys-color-on-tertiary: #0a3818;
             --md-sys-color-outline: #444746;
             --md-elevation-2: 0 2px 6px 2px rgba(0, 0, 0, 0.35), 0 1px 2px 0 rgba(0, 0, 0, 0.5);
             --md-elevation-3: 0 4px 12px 3px rgba(0, 0, 0, 0.4), 0 1px 3px 0 rgba(0, 0, 0, 0.55);
@@ -43,7 +42,7 @@
 
         body { 
             margin: 0; overflow: hidden; background-color: var(--md-sys-color-background); 
-            touch-action: none; font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+            touch-action: none; font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
             color: var(--md-sys-color-on-surface);
         }
 
@@ -66,39 +65,23 @@
             transform: translateY(0);
         }
         
-        /* 1. Material Home Screen */
+        /* 1. Home Screen with Photo Background */
         #menuScreen {
-            background-color: var(--md-sys-color-background);
+            background: linear-gradient(rgba(19, 19, 20, 0.52), rgba(19, 19, 20, 0.82)),
+                        url('./background.jpg') center center / cover no-repeat;
             display: flex; flex-direction: column;
             justify-content: center; align-items: center; z-index: 200;
             padding: 24px;
         }
-        .app-icon-container {
-            width: 72px; height: 72px; border-radius: 24px;
-            background: var(--md-sys-color-secondary-container);
-            color: var(--md-sys-color-on-secondary-container);
-            display: flex; align-items: center; justify-content: center;
-            margin-bottom: 20px;
-            box-shadow: var(--md-elevation-2);
-        }
-        .app-icon-container .material-symbols-outlined {
-            font-size: 36px;
-        }
-        .menu-chip {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 12px; font-weight: 500; letter-spacing: 0.4px;
-            color: var(--md-sys-color-on-secondary-container);
-            background: var(--md-sys-color-surface-container);
-            border: 1px solid var(--md-sys-color-outline);
-            padding: 6px 14px; border-radius: 8px; margin-bottom: 16px;
-        }
         #menuScreen h1 { 
-            color: var(--md-sys-color-on-surface); margin: 0 0 10px 0; text-align: center; 
-            font-size: 28px; font-weight: 400; letter-spacing: 0;
+            color: #ffffff; margin: 0 0 10px 0; text-align: center; 
+            font-size: 32px; font-weight: 600; letter-spacing: -0.3px;
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
         }
         .menu-subtitle {
-            color: var(--md-sys-color-on-surface-variant); font-size: 14px; text-align: center;
+            color: #e2e8f0; font-size: 15px; text-align: center;
             max-width: 310px; line-height: 1.5; margin: 0 0 36px 0;
+            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
         }
 
         /* Material 3 Pill Buttons */
@@ -107,41 +90,43 @@
             background-color: var(--md-sys-color-primary);
             color: var(--md-sys-color-on-primary);
             border: none; border-radius: 9999px;
-            height: 52px; padding: 0 28px;
-            font-family: 'Roboto', sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 0.1px;
+            height: 54px; padding: 0 28px;
+            font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.1px;
             margin: 6px 0; width: 100%; max-width: 280px; cursor: pointer;
-            box-shadow: var(--md-elevation-2);
+            box-shadow: var(--md-elevation-3);
             transition: transform 0.16s var(--md-motion-standard), filter 0.16s ease;
         }
         .menu-btn.tonal {
-            background-color: var(--md-sys-color-secondary-container);
-            color: var(--md-sys-color-on-secondary-container);
-            box-shadow: none;
+            background-color: rgba(30, 31, 32, 0.88);
+            color: var(--md-sys-color-on-surface);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
         }
         .menu-btn:active {
             transform: scale(0.97);
             filter: brightness(0.92);
         }
 
-        /* 2. Map Selection Screen (Google Maps Style) */
+        /* 2. Map Selection Screen */
         #mapScreen { z-index: 150; background: var(--md-sys-color-background); }
         #leafletMap { width: 100%; height: 100%; }
         
-        /* Floating Search-Bar Style Top Header on Map */
+        /* Fit-to-Text Floating Pill Header on Map */
         .map-top-bar {
             position: absolute;
             top: calc(12px + env(safe-area-inset-top));
             left: calc(12px + env(safe-area-inset-left));
-            right: calc(12px + env(safe-area-inset-right));
-            height: 52px;
+            width: fit-content;
+            max-width: calc(100vw - 24px);
+            height: 48px;
             background: var(--md-sys-color-surface-container);
             border: 1px solid var(--md-sys-color-outline);
             border-radius: 9999px;
-            display: flex; align-items: center; padding: 0 8px 0 6px; gap: 8px;
+            display: inline-flex; align-items: center; padding: 0 18px 0 6px; gap: 6px;
             z-index: 1000; box-shadow: var(--md-elevation-3);
         }
         .icon-btn-circle {
-            width: 40px; height: 40px; border-radius: 50%;
+            width: 38px; height: 38px; border-radius: 50%;
             background: transparent; border: none;
             color: var(--md-sys-color-on-surface);
             display: flex; align-items: center; justify-content: center;
@@ -151,7 +136,7 @@
         
         #mapInstructions {
             font-size: 14px; font-weight: 400;
-            color: var(--md-sys-color-on-surface-variant);
+            color: var(--md-sys-color-on-surface);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
 
@@ -162,7 +147,7 @@
             left: 50%; transform: translateX(-50%) translateY(16px);
             height: 56px; padding: 0 26px;
             display: inline-flex; align-items: center; gap: 10px;
-            font-family: 'Roboto', sans-serif; font-size: 15px; font-weight: 500;
+            font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600;
             background-color: var(--md-sys-color-primary);
             color: var(--md-sys-color-on-primary);
             border: none; border-radius: 16px;
@@ -220,7 +205,7 @@
             color: var(--md-sys-color-on-surface);
             border: 1px solid var(--md-sys-color-outline);
             border-radius: 9999px;
-            font-family: 'Roboto', sans-serif; font-size: 14px; font-weight: 500;
+            font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 500;
             cursor: pointer; z-index: 20;
             box-shadow: var(--md-elevation-2);
         }
@@ -296,7 +281,7 @@
             border-left: 1px solid var(--md-sys-color-outline);
             border-right: 1px solid var(--md-sys-color-outline);
             border-radius: 28px 28px 0 0;
-            padding: 10px 20px calc(18px + env(safe-area-inset-bottom)) 20px;
+            padding: 10px 22px calc(26px + env(safe-area-inset-bottom)) 22px;
             color: var(--md-sys-color-on-surface);
             z-index: 20; pointer-events: auto;
             box-shadow: var(--md-elevation-3);
@@ -315,39 +300,72 @@
         }
         .drawer-title {
             display: inline-flex; align-items: center; gap: 6px;
-            font-size: 13px; font-weight: 500; color: var(--md-sys-color-on-surface);
+            font-size: 14px; font-weight: 500; color: var(--md-sys-color-on-surface);
         }
         #toggleDrawerIcon {
             color: var(--md-sys-color-on-surface-variant);
             transition: transform 0.25s var(--md-motion-standard);
         }
         #slidersBody {
-            overflow: hidden; max-height: 280px; margin-top: 12px;
+            overflow: visible; max-height: 400px; margin-top: 14px;
             transition: max-height 0.3s var(--md-motion-standard), margin-top 0.3s ease, opacity 0.22s ease;
             opacity: 1;
         }
         #bottomSliders.collapsed #slidersBody {
-            max-height: 0; margin-top: 0; opacity: 0;
+            overflow: hidden; max-height: 0; margin-top: 0; opacity: 0;
         }
         #bottomSliders.collapsed #toggleDrawerIcon {
             transform: rotate(180deg);
         }
 
-        .slider-row { display: flex; flex-direction: column; margin-bottom: 14px; }
-        .slider-row:last-child { margin-bottom: 0; }
+        .slider-row { display: flex; flex-direction: column; margin-bottom: 18px; }
+        .slider-row:last-child { margin-bottom: 4px; }
         .slider-label-row { 
             display: flex; justify-content: space-between; align-items: center;
-            font-size: 13px; color: var(--md-sys-color-on-surface-variant); font-weight: 500;
+            font-size: 13.5px; color: var(--md-sys-color-on-surface-variant); font-weight: 500;
         }
         .slider-badge { 
             background: var(--md-sys-color-secondary-container);
             color: var(--md-sys-color-on-secondary-container);
-            padding: 2px 10px; border-radius: 9999px;
-            font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
+            padding: 3px 11px; border-radius: 9999px;
+            font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
         }
+
+        /* Custom Large Touch-Friendly Material Sliders */
         .slider-row input[type="range"] { 
-            width: 100%; margin-top: 8px; accent-color: var(--md-sys-color-primary);
-            height: 6px; cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            margin-top: 12px;
+            background: var(--md-sys-color-surface-container-high);
+            border-radius: 9999px;
+            outline: none;
+            cursor: pointer;
+        }
+        .slider-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--md-sys-color-primary);
+            border: 3px solid var(--md-sys-color-surface);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+            cursor: pointer;
+            transition: transform 0.12s ease;
+        }
+        .slider-row input[type="range"]::-webkit-slider-thumb:active {
+            transform: scale(1.16);
+        }
+        .slider-row input[type="range"]::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--md-sys-color-primary);
+            border: 3px solid var(--md-sys-color-surface);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+            cursor: pointer;
         }
         
         /* Material Precision Reticle */
@@ -377,14 +395,7 @@
 <body>
     <!-- 1. Main Menu -->
     <div id="menuScreen" class="screen-layer active">
-        <div class="app-icon-container">
-            <span class="material-symbols-outlined">terrain</span>
-        </div>
-        <div class="menu-chip">
-            <span class="material-symbols-outlined" style="font-size:15px;">grid_on</span>
-            0.5m High-Res DTM
-        </div>
-        <h1>HK Geoscientific Explorer</h1>
+        <h1>HK Geology Explorer</h1>
         <p class="menu-subtitle">Real-time 3D lithological terrain overlay for geological field mapping.</p>
         <button class="menu-btn" id="btnLiveMode">
             <span class="material-symbols-outlined">photo_camera</span>
@@ -482,7 +493,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    <script src="app.js?v=19"></script>
+    <script src="app.js?v=20"></script>
 
     <script>
       if ('serviceWorker' in navigator) {
