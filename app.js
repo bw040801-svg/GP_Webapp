@@ -1,5 +1,5 @@
 let scene, camera, cameraGroup, renderer, controls;
-let activeTiles = {}; // Stores dynamically loaded terrain tiles
+let activeTiles = {};
 let raycaster, centerScreen;
 let globalMeta;
 let rockColors = {}; 
@@ -146,17 +146,45 @@ const GEOLOGY_DICT = {
 
 proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.31213333333334 +lon_0=114.1785555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,0.067753,-2.24365,-1.15883,-1.09425 +units=m +no_defs");
 
+// UI Event Listeners
 document.getElementById('btnLiveMode').addEventListener('click', startLiveMode);
 document.getElementById('btnMapMode').addEventListener('click', openMapMode);
 document.getElementById('confirmMapBtn').addEventListener('click', confirmMapLocation);
 document.getElementById('btnBack').addEventListener('click', returnToMenu);
-document.getElementById('btnMapBack').addEventListener('click', () => {
-    document.getElementById('mapScreen').style.display = 'none';
-    document.getElementById('menuScreen').style.display = 'flex';
-});
-document.getElementById('sheetToggle').addEventListener('click', () => {
+document.getElementById('btnMapBack').addEventListener('click', returnToMenu);
+document.getElementById('drawerToggle').addEventListener('click', () => {
     document.getElementById('bottomSliders').classList.toggle('collapsed');
 });
+
+// Smooth Screen & Loading Transition Helpers
+function setActiveScreen(screenId) {
+    document.querySelectorAll('.screen-layer').forEach(el => el.classList.remove('active'));
+    if (screenId) {
+        const target = document.getElementById(screenId);
+        if (target) target.classList.add('active');
+    }
+}
+
+function setLoading(isLoading, message = "Loading...") {
+    const overlay = document.getElementById('loadingOverlay');
+    const text = document.getElementById('loadingText');
+    if (text) text.innerText = message;
+    if (isLoading) {
+        overlay.classList.add('active');
+    } else {
+        overlay.classList.remove('active');
+    }
+}
+
+function showUIElements() {
+    document.querySelectorAll('.ar-hud').forEach(el => el.classList.add('active'));
+    updateStrideHudDisplay();
+}
+
+function hideUIElements() {
+    document.querySelectorAll('.ar-hud').forEach(el => el.classList.remove('active'));
+    document.getElementById('explanationBox').style.display = 'none';
+}
 
 function generateColors(dictionary) {
     rockColors[0] = new THREE.Color("white"); 
@@ -166,7 +194,7 @@ function generateColors(dictionary) {
     }
 }
 
-// Distance-based LOD calculation to stay strictly within iOS WebGL memory limits
+// Distance-based LOD calculation for territory-wide 5m Hong Kong DTM
 function getOptimalStrideForTile(tr, tc) {
     const tileMeters = globalMeta.tile_size * globalMeta.resolution;
     const tileCenterX = (tc + 0.5) * tileMeters;
@@ -180,21 +208,30 @@ function getOptimalStrideForTile(tr, tc) {
 }
 
 function updateStrideHudDisplay() {
-    const el = document.getElementById('strideText');
+    let el = document.getElementById('strideText');
+    if (!el) {
+        const chipRow = document.querySelector('#ui .md-chip-row');
+        if (chipRow) {
+            el = document.createElement('span');
+            el.id = 'strideText';
+            el.className = 'md-status-chip';
+            el.style.color = '#a8c7fa';
+            chipRow.appendChild(el);
+        }
+    }
     if (el && globalMeta) {
         const loadedTiles = Object.values(activeTiles).filter(t => t.isLoaded);
         const strides = [...new Set(loadedTiles.map(t => t.stride))].sort((a, b) => a - b);
         const strideStr = strides.length ? strides.join('/') : '1';
-        el.innerText = `• LOD ${strideStr} (${loadedTiles.length} tiles)`;
+        el.innerText = `LOD ${strideStr} · ${loadedTiles.length} tiles`;
     }
 }
 
 function openMapMode() {
-    document.getElementById('menuScreen').style.display = 'none';
-    document.getElementById('mapScreen').style.display = 'block';
+    setActiveScreen('mapScreen');
     
     if (!mapInstance) {
-        mapInstance = L.map('leafletMap').setView([22.35, 114.12], 11);
+        mapInstance = L.map('leafletMap', { zoomControl: false }).setView([22.35, 114.12], 11);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18, attribution: '© OpenStreetMap'
         }).addTo(mapInstance);
@@ -204,25 +241,29 @@ function openMapMode() {
             mapMarker = L.marker(e.latlng).addTo(mapInstance);
             selectedLat = e.latlng.lat;
             selectedLon = e.latlng.lng;
-            document.getElementById('confirmMapBtn').style.display = 'inline-flex';
+            document.getElementById('confirmMapBtn').classList.add('visible');
         });
     }
-    setTimeout(() => mapInstance.invalidateSize(), 200);
+    setTimeout(() => mapInstance.invalidateSize(), 320);
 }
 
 async function confirmMapLocation() {
     currentMode = 'map';
-    document.getElementById('mapScreen').style.display = 'none';
+    setActiveScreen(null);
+    setLoading(true, "Loading 3D terrain tiles...");
+    
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        await DeviceOrientationEvent.requestPermission();
+        try { await DeviceOrientationEvent.requestPermission(); } catch (e) { console.error(e); }
     }
+    await loadAppMetadata();
     showUIElements();
-    loadAppMetadata();
+    setLoading(false);
 }
 
 async function startLiveMode() {
     currentMode = 'live';
-    document.getElementById('menuScreen').style.display = 'none';
+    setActiveScreen(null);
+    setLoading(true, "Starting camera & sensors...");
     
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         try { await DeviceMotionEvent.requestPermission(); } catch (e) { console.error(e); }
@@ -234,17 +275,10 @@ async function startLiveMode() {
         video.style.display = 'block';
     } catch (err) { console.error("Camera access denied", err); }
     
+    setLoading(true, "Loading geological terrain...");
+    await loadAppMetadata();
     showUIElements();
-    loadAppMetadata();
-}
-
-function showUIElements() {
-    document.getElementById('ui').style.display = 'block';
-    document.getElementById('bottomSliders').style.display = 'block';
-    document.getElementById('crosshair').style.display = 'block';
-    document.getElementById('compassBox').style.display = 'inline-flex';
-    document.getElementById('btnBack').style.display = 'inline-flex';
-    updateStrideHudDisplay();
+    setLoading(false);
 }
 
 function returnToMenu() {
@@ -261,35 +295,27 @@ function returnToMenu() {
         geoWatchId = null;
     }
 
-    document.getElementById('ui').style.display = 'none';
-    document.getElementById('bottomSliders').style.display = 'none';
-    document.getElementById('crosshair').style.display = 'none';
-    document.getElementById('compassBox').style.display = 'none';
-    document.getElementById('explanationBox').style.display = 'none';
-    document.getElementById('btnBack').style.display = 'none';
-
+    hideUIElements();
+    setLoading(false);
     currentMode = null;
-    document.getElementById('menuScreen').style.display = 'flex';
+    setActiveScreen('menuScreen');
 }
 
 async function loadAppMetadata() {
-    if (globalMeta) {
-        initThreeJS();
-        return;
+    if (!globalMeta) {
+        globalMeta = await (await fetch('data/meta.json')).json();
+        generateColors(globalMeta.rock_dictionary);
     }
-    document.getElementById('infoText').innerText = "Connecting to tile server...";
-    globalMeta = await (await fetch('data/meta.json')).json();
-    generateColors(globalMeta.rock_dictionary);
-    initThreeJS();
+    await initThreeJS();
 }
 
-function initThreeJS() {
+async function initThreeJS() {
     if (renderer) {
         if (currentMode === 'live') {
             startGPSWatcher(); 
         } else if (currentMode === 'map') {
-            setCameraToLocation(selectedLat, selectedLon);
-            document.getElementById('gpsText').innerText = "Virtual Map View";
+            await setCameraToLocation(selectedLat, selectedLon);
+            document.getElementById('gpsText').innerText = "Virtual Map";
         }
         return;
     }
@@ -303,7 +329,6 @@ function initThreeJS() {
     scene.add(cameraGroup);
     cameraGroup.add(camera);
 
-    // Disable antialias and cap pixelRatio at 1.5 to reduce iOS WebGL VRAM pressure
     renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -362,7 +387,6 @@ function initThreeJS() {
             yawOffset += deltaX * 0.002;
             pitchOffset += deltaY * 0.002;
 
-            // Clamp vertical pitch so the view cannot flip upside down
             pitchOffset = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitchOffset));
 
             previousTouch.x = e.touches[0].clientX;
@@ -376,8 +400,8 @@ function initThreeJS() {
     if (currentMode === 'live') {
         startGPSWatcher(); 
     } else if (currentMode === 'map') {
-        setCameraToLocation(selectedLat, selectedLon);
-        document.getElementById('gpsText').innerText = "Virtual Map View";
+        await setCameraToLocation(selectedLat, selectedLon);
+        document.getElementById('gpsText').innerText = "Virtual Map";
     }
     
     animate();
@@ -408,23 +432,23 @@ async function setCameraToLocation(lat, lon) {
 
 function startGPSWatcher() {
     if (!navigator.geolocation) {
-        document.getElementById('gpsText').innerText = "GPS unsupported";
+        document.getElementById('gpsText').innerText = "No GPS";
         return;
     }
-    document.getElementById('gpsText').innerText = "Acquiring GPS...";
+    document.getElementById('gpsText').innerText = "Locating...";
     
     geoWatchId = navigator.geolocation.watchPosition((position) => {
         let lat = position.coords.latitude;
         let lon = position.coords.longitude;
         if (lat > 50) { 
             lat = 22.411; lon = 114.124; 
-            document.getElementById('gpsText').innerText = "GPS: Tai Mo Shan (Sim)";
+            document.getElementById('gpsText').innerText = "Tai Mo Shan (Sim)";
         } else {
-            document.getElementById('gpsText').innerText = `GPS: ±${position.coords.accuracy.toFixed(0)}m`;
+            document.getElementById('gpsText').innerText = `GPS ±${Math.round(position.coords.accuracy)}m`;
         }
         setCameraToLocation(lat, lon);
     }, (error) => {
-        document.getElementById('gpsText').innerText = "GPS Signal Lost";
+        document.getElementById('gpsText').innerText = "GPS Lost";
     }, { enableHighAccuracy: true, maximumAge: 0 });
 }
 
@@ -463,7 +487,6 @@ async function checkAndLoadTiles(distanceMeters) {
         }
     }
 
-    // Unload distant tiles or tiles whose LOD stride needs to change
     for (let key in activeTiles) {
         if (!requiredTiles.has(key)) {
             disposeTile(key);
@@ -476,7 +499,6 @@ async function checkAndLoadTiles(distanceMeters) {
         }
     }
 
-    // Load newly required or LOD-updated tiles sequentially in small batches to avoid memory spikes
     for (let key of requiredTiles) {
         if (!activeTiles[key]) {
             const [tr, tc] = key.split('_').map(Number);
@@ -645,34 +667,41 @@ function updateCompass() {
     else if (heading > 247.5 && heading <= 292.5) card = "W";
     else if (heading > 292.5 && heading <= 337.5) card = "NW";
     
-    document.getElementById('compassText').innerText = `${Math.round(heading)}° ${card}`;
+    const compassVal = document.getElementById('compassVal');
+    if (compassVal) {
+        compassVal.innerText = `${Math.round(heading)}° ${card}`;
+    }
 }
 
 function updateRaycaster() {
     const hit = pickCentreRay();
     const expBox = document.getElementById('explanationBox');
+    const crosshair = document.getElementById('crosshair');
+
     if (!hit) {
         expBox.style.display = 'none';
-        document.getElementById('infoText').innerHTML = `<span style="color:#C4C6D0;">Aim crosshair at terrain...</span>`;
+        crosshair.classList.remove('locked');
+        document.getElementById('infoText').innerHTML = `<span style="color:#c4c7c5;">Aim reticle at terrain...</span>`;
         return;
     }
+
+    crosshair.classList.add('locked');
     const rockCode = globalMeta.rock_dictionary[hit.rock] || "";
     const easting = globalMeta.origin_x + hit.x;
     const northing = globalMeta.origin_y - hit.z;
-    const hexColor = rockColors[hit.rock] ? `#${rockColors[hit.rock].getHexString()}` : '#A8C7FA';
+    const hexColor = rockColors[hit.rock] ? `#${rockColors[hit.rock].getHexString()}` : '#a8c7fa';
 
     document.getElementById('infoText').innerHTML =
-        `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">` +
-        `<span style="display:inline-flex; align-items:center; gap:7px; font-weight:600; font-size:15px;">` +
-        `<span style="width:12px; height:12px; border-radius:50%; background:${hexColor}; display:inline-block; border:1px solid rgba(255,255,255,0.5);"></span>` +
-        `Unit: <span style="color:#6DD58C;">${rockCode}</span>` +
-        `</span>` +
-        `<span style="background:rgba(168,199,250,0.16); color:#A8C7FA; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600;">~${Math.round(hit.y)} m</span>` +
+        `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:2px;">` +
+            `<span style="display:inline-flex; align-items:center; gap:7px; font-size:15px; font-weight:700; color:#6dd58c;">` +
+                `<span style="width:11px; height:11px; border-radius:50%; background:${hexColor}; display:inline-block; border:1px solid rgba(255,255,255,0.5);"></span>` +
+                `${rockCode}` +
+            `</span>` +
+            `<span style="font-size:12px; color:#c4c7c5;">Elev ${Math.round(hit.y)} m</span>` +
         `</div>` +
-        `<div style="font-size:12px; color:#C4C6D0; margin-top:4px;">HK1980: E ${Math.round(easting)}, N ${Math.round(northing)}</div>`;
-
+        `<div style="font-size:12px; color:#c4c7c5;">HK1980 · E ${Math.round(easting)}, N ${Math.round(northing)}</div>`;
     expBox.style.display = 'block';
-    expBox.innerHTML = GEOLOGY_DICT[rockCode] || "Unmapped unit";
+    expBox.innerHTML = GEOLOGY_DICT[rockCode] || "Unmapped geological unit";
 }
 
 let lastHud = 0, frames = 0, fpsStart = 0;
@@ -680,11 +709,9 @@ function animate(now = 0) {
     requestAnimationFrame(animate);
     controls.update();
 
-    // 1. Apply horizontal compass calibration around true vertical (World Up)
     yawQuat.setFromAxisAngle(worldUp, yawOffset);
     camera.quaternion.premultiply(yawQuat);
 
-    // 2. Apply vertical tilt around the screen's own horizontal axis (Local Right)
     pitchQuat.setFromAxisAngle(localRight, pitchOffset);
     camera.quaternion.multiply(pitchQuat);
 
