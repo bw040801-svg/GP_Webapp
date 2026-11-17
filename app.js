@@ -1,5 +1,5 @@
 let scene, camera, cameraGroup, renderer, controls;
-let activeTiles = {}; // Stores dynamically loaded terrain tiles
+let activeTiles = {};
 let raycaster, centerScreen;
 let globalMeta;
 let rockColors = {}; 
@@ -8,6 +8,7 @@ let geoWatchId = null;
 let currentMode = null; 
 let mapInstance = null;
 let mapMarker = null;
+let mapBoundsRect = null;
 let selectedLat = 22.3193, selectedLon = 114.1694;
 
 let yawOffset = 0, pitchOffset = 0;
@@ -16,7 +17,6 @@ let gpsSceneX = 0, gpsSceneZ = 0;
 let currentGroundElev = 20;
 let heightOffset = 10;
 
-// Reusable quaternion helpers for drift-free pitch/yaw camera calibration
 const worldUp = new THREE.Vector3(0, 1, 0);
 const localRight = new THREE.Vector3(1, 0, 0);
 const yawQuat = new THREE.Quaternion();
@@ -159,17 +159,35 @@ function generateColors(dictionary) {
     }
 }
 
-// Distance-based LOD calculation to stay strictly within iOS WebGL memory limits
+// Automatically compute the WGS84 center and bounding box of the loaded DTM
+function getDatasetGeoInfo() {
+    const minE = globalMeta.origin_x;
+    const maxE = globalMeta.origin_x + (globalMeta.cols * globalMeta.resolution);
+    const maxN = globalMeta.origin_y;
+    const minN = globalMeta.origin_y - (globalMeta.rows * globalMeta.resolution);
+
+    const centerHK = [(minE + maxE) / 2, (minN + maxN) / 2];
+    const centerWGS = proj4("EPSG:2326", "WGS84", centerHK);
+    const nwWGS = proj4("EPSG:2326", "WGS84", [minE, maxN]);
+    const seWGS = proj4("EPSG:2326", "WGS84", [maxE, minN]);
+
+    return {
+        centerLat: centerWGS[1],
+        centerLon: centerWGS[0],
+        bounds: [[nwWGS[1], nwWGS[0]], [seWGS[1], seWGS[0]]]
+    };
+}
+
+// Scaled LOD thresholds for 0.5m resolution (750m x 750m site)
 function getOptimalStrideForTile(tr, tc) {
     const tileMeters = globalMeta.tile_size * globalMeta.resolution;
     const tileCenterX = (tc + 0.5) * tileMeters;
     const tileCenterZ = (tr + 0.5) * tileMeters;
     const dist = Math.hypot(tileCenterX - gpsSceneX, tileCenterZ - gpsSceneZ);
 
-    if (dist <= 2800) return 1;      // 5m mesh for immediate slopes
-    if (dist <= 5000) return 4;      // 20m mesh (94% less memory than stride 1)
-    if (dist <= 8500) return 8;      // 40m mesh (98.4% less memory)
-    return 16;                       // 80m mesh for distant horizon peaks
+    if (dist <= 280) return 1;       // 0.5m mesh for immediate slopes
+    if (dist <= 550) return 2;       // 1.0m mesh (75% less memory)
+    return 4;                        // 2.0m mesh (93.75% less memory)
 }
 
 function updateStrideHudDisplay() {
@@ -187,18 +205,34 @@ function updateStrideHudDisplay() {
         const loadedTiles = Object.values(activeTiles).filter(t => t.isLoaded);
         const strides = [...new Set(loadedTiles.map(t => t.stride))].sort((a, b) => a - b);
         const strideStr = strides.length ? strides.join('/') : '1';
-        el.innerText = `LOD Stride: ${strideStr} | Tiles: ${loadedTiles.length}`;
+        el.innerText = `Res: ${globalMeta.resolution}m | LOD: ${strideStr} | Tiles: ${loadedTiles.length}`;
     }
 }
 
-function openMapMode() {
+async function openMapMode() {
     document.getElementById('menuScreen').style.display = 'none';
     document.getElementById('mapScreen').style.display = 'block';
     
+    if (!globalMeta) {
+        document.getElementById('mapInstructions').innerText = "Loading metadata...";
+        globalMeta = await (await fetch('data/meta.json')).json();
+        generateColors(globalMeta.rock_dictionary);
+        document.getElementById('mapInstructions').innerText = "Tap inside the highlighted box to spawn";
+    }
+
+    const geoInfo = getDatasetGeoInfo();
+    
     if (!mapInstance) {
-        mapInstance = L.map('leafletMap').setView([22.35, 114.12], 11);
+        mapInstance = L.map('leafletMap').setView([geoInfo.centerLat, geoInfo.centerLon], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18, attribution: '© OpenStreetMap'
+            maxZoom: 19, attribution: '© OpenStreetMap'
+        }).addTo(mapInstance);
+
+        // Draw bounding rectangle so you can see the exact 750m x 750m DTM coverage area
+        mapBoundsRect = L.rectangle(geoInfo.bounds, {
+            color: "#00ff00",
+            weight: 2,
+            fillOpacity: 0.08
         }).addTo(mapInstance);
 
         mapInstance.on('click', function(e) {
@@ -208,6 +242,8 @@ function openMapMode() {
             selectedLon = e.latlng.lng;
             document.getElementById('confirmMapBtn').style.display = 'block';
         });
+    } else {
+        mapInstance.setView([geoInfo.centerLat, geoInfo.centerLon], 15);
     }
     setTimeout(() => mapInstance.invalidateSize(), 200);
 }
@@ -298,14 +334,14 @@ function initThreeJS() {
 
     scene = new THREE.Scene();
     const initialDistance = parseInt(document.getElementById('viewDistance').value);
-    scene.fog = new THREE.Fog(0x87CEEB, initialDistance * 0.5, initialDistance);
+    scene.fog = new THREE.Fog(0x87CEEB, initialDistance * 0.6, initialDistance);
     
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, initialDistance);
+    // Near plane set to 0.5m for close-up 0.5m resolution terrain
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, initialDistance);
     cameraGroup = new THREE.Group();
     scene.add(cameraGroup);
     cameraGroup.add(camera);
 
-    // Disable antialias and cap pixelRatio at 1.5 to reduce iOS WebGL VRAM pressure
     renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -314,7 +350,7 @@ function initThreeJS() {
     controls = new THREE.DeviceOrientationControls(camera);
 
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
-    sun.position.set(3000, 2500, 3000); 
+    sun.position.set(1500, 1500, 1500); 
     scene.add(sun);
     scene.add(new THREE.AmbientLight(0x444444));
 
@@ -334,7 +370,7 @@ function initThreeJS() {
         const dist = parseInt(e.target.value);
         camera.far = dist;
         camera.updateProjectionMatrix();
-        scene.fog.near = dist * 0.5;
+        scene.fog.near = dist * 0.6;
         scene.fog.far = dist;
         checkAndLoadTiles(dist);
     });
@@ -364,7 +400,6 @@ function initThreeJS() {
             yawOffset += deltaX * 0.002;
             pitchOffset += deltaY * 0.002;
 
-            // Clamp vertical pitch so the view cannot flip upside down
             pitchOffset = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitchOffset));
 
             previousTouch.x = e.touches[0].clientX;
@@ -419,8 +454,11 @@ function startGPSWatcher() {
         let lat = position.coords.latitude;
         let lon = position.coords.longitude;
         if (lat > 50) { 
-            lat = 22.411; lon = 114.124; 
-            document.getElementById('gpsText').innerText = "GPS: Spoofed to HK (Tai Mo Shan)";
+            // Automatically spawn in the center of your 750m x 750m dataset when outside Asia
+            const geoInfo = getDatasetGeoInfo();
+            lat = geoInfo.centerLat;
+            lon = geoInfo.centerLon;
+            document.getElementById('gpsText').innerText = "GPS: Spoofed to Dataset Center";
         } else {
             document.getElementById('gpsText').innerText = `GPS: Live (${position.coords.accuracy.toFixed(1)}m)`;
         }
@@ -465,7 +503,6 @@ async function checkAndLoadTiles(distanceMeters) {
         }
     }
 
-    // Unload distant tiles or tiles whose LOD stride needs to change
     for (let key in activeTiles) {
         if (!requiredTiles.has(key)) {
             disposeTile(key);
@@ -478,7 +515,6 @@ async function checkAndLoadTiles(distanceMeters) {
         }
     }
 
-    // Load newly required or LOD-updated tiles sequentially in small batches to avoid memory spikes
     for (let key of requiredTiles) {
         if (!activeTiles[key]) {
             const [tr, tc] = key.split('_').map(Number);
@@ -616,7 +652,7 @@ function pickCentreRay() {
     const origin = new THREE.Vector3(), dir = new THREE.Vector3();
     camera.getWorldPosition(origin);
     camera.getWorldDirection(dir);
-    const step = globalMeta.resolution;
+    const step = globalMeta.resolution; // Automatically steps at 0.5m precision!
     for (let t = step; t < camera.far; t += step) {
         const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
         if (dir.y > 0 && y > 2000) break;
@@ -674,11 +710,9 @@ function animate(now = 0) {
     requestAnimationFrame(animate);
     controls.update();
 
-    // 1. Apply horizontal compass calibration around true vertical (World Up)
     yawQuat.setFromAxisAngle(worldUp, yawOffset);
     camera.quaternion.premultiply(yawQuat);
 
-    // 2. Apply vertical tilt around the screen's own horizontal axis (Local Right)
     pitchQuat.setFromAxisAngle(localRight, pitchOffset);
     camera.quaternion.multiply(pitchQuat);
 
