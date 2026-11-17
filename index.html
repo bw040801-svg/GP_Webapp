@@ -3,122 +3,173 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Geoscientific AR Project</title>
+    <title>Geoscientific AR Explorer</title>
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon-512.jpg">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- Google Fonts: Roboto & Material Symbols Outlined -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500,0..1,0" rel="stylesheet">
+    
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
         :root {
-            --glass-bg: rgba(15, 20, 28, 0.72);
-            --glass-border: rgba(255, 255, 255, 0.16);
-            --accent: #00d2ff;
-            --accent-green: #00e676;
-            --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+            /* Material Design 3 Dark Scheme (Google Maps / Earth Palette) */
+            --md-sys-color-background: #131314;
+            --md-sys-color-surface: #1e1f20;
+            --md-sys-color-surface-container: #282a2c;
+            --md-sys-color-surface-container-high: #333537;
+            --md-sys-color-on-surface: #e3e3e3;
+            --md-sys-color-on-surface-variant: #c4c7c5;
+            --md-sys-color-primary: #a8c7fa;
+            --md-sys-color-on-primary: #062e6f;
+            --md-sys-color-secondary-container: #004a77;
+            --md-sys-color-on-secondary-container: #c2e7ff;
+            --md-sys-color-tertiary: #6dd58c;
+            --md-sys-color-on-tertiary: #0a3818;
+            --md-sys-color-outline: #444746;
+            --md-elevation-2: 0 2px 6px 2px rgba(0, 0, 0, 0.35), 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+            --md-elevation-3: 0 4px 12px 3px rgba(0, 0, 0, 0.4), 0 1px 3px 0 rgba(0, 0, 0, 0.55);
+            --md-motion-standard: cubic-bezier(0.2, 0.0, 0, 1.0);
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
         body { 
-            margin: 0; overflow: hidden; background-color: #0b0f14; 
-            touch-action: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            color: #fff;
+            margin: 0; overflow: hidden; background-color: var(--md-sys-color-background); 
+            touch-action: none; font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--md-sys-color-on-surface);
         }
 
-        /* Smooth Screen Overlay Transitions */
+        .material-symbols-outlined {
+            font-size: 20px;
+            line-height: 1;
+            vertical-align: middle;
+            user-select: none;
+        }
+
+        /* Screen Layer Transitions */
         .screen-layer {
             position: fixed; inset: 0;
             opacity: 0; visibility: hidden; pointer-events: none;
-            transform: scale(1.03);
-            transition: opacity 0.35s var(--ease-smooth), transform 0.35s var(--ease-smooth), visibility 0.35s;
+            transform: translateY(12px);
+            transition: opacity 0.3s var(--md-motion-standard), transform 0.3s var(--md-motion-standard), visibility 0.3s;
         }
         .screen-layer.active {
             opacity: 1; visibility: visible; pointer-events: auto;
-            transform: scale(1);
+            transform: translateY(0);
         }
         
-        /* 1. Main Menu Screen */
+        /* 1. Material Home Screen */
         #menuScreen {
-            background: radial-gradient(circle at 50% 25%, #1a2a3a 0%, #0b0f14 75%);
+            background-color: var(--md-sys-color-background);
             display: flex; flex-direction: column;
             justify-content: center; align-items: center; z-index: 200;
             padding: 24px;
         }
-        .menu-badge {
-            font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
-            color: var(--accent); background: rgba(0, 210, 255, 0.12);
-            border: 1px solid rgba(0, 210, 255, 0.3);
-            padding: 6px 14px; border-radius: 20px; margin-bottom: 16px;
+        .app-icon-container {
+            width: 72px; height: 72px; border-radius: 24px;
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 20px;
+            box-shadow: var(--md-elevation-2);
+        }
+        .app-icon-container .material-symbols-outlined {
+            font-size: 36px;
+        }
+        .menu-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 12px; font-weight: 500; letter-spacing: 0.4px;
+            color: var(--md-sys-color-on-secondary-container);
+            background: var(--md-sys-color-surface-container);
+            border: 1px solid var(--md-sys-color-outline);
+            padding: 6px 14px; border-radius: 8px; margin-bottom: 16px;
         }
         #menuScreen h1 { 
-            color: #fff; margin: 0 0 10px 0; text-align: center; 
-            font-size: 28px; font-weight: 700; letter-spacing: -0.5px;
+            color: var(--md-sys-color-on-surface); margin: 0 0 10px 0; text-align: center; 
+            font-size: 28px; font-weight: 400; letter-spacing: 0;
         }
         .menu-subtitle {
-            color: #9aa7b8; font-size: 14px; text-align: center;
-            max-width: 300px; line-height: 1.5; margin-bottom: 36px;
+            color: var(--md-sys-color-on-surface-variant); font-size: 14px; text-align: center;
+            max-width: 310px; line-height: 1.5; margin: 0 0 36px 0;
         }
+
+        /* Material 3 Pill Buttons */
         .menu-btn {
-            display: flex; align-items: center; justify-content: center; gap: 10px;
-            background: linear-gradient(135deg, #007bff, #0056d6);
-            color: white; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 14px;
-            padding: 16px 24px; font-size: 17px; font-weight: 600; margin: 8px 0;
-            width: 100%; max-width: 280px; cursor: pointer;
-            box-shadow: 0 10px 25px rgba(0, 123, 255, 0.28);
-            transition: transform 0.18s var(--ease-smooth), box-shadow 0.18s ease, background 0.2s ease;
+            display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+            background-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none; border-radius: 9999px;
+            height: 52px; padding: 0 28px;
+            font-family: 'Roboto', sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 0.1px;
+            margin: 6px 0; width: 100%; max-width: 280px; cursor: pointer;
+            box-shadow: var(--md-elevation-2);
+            transition: transform 0.16s var(--md-motion-standard), filter 0.16s ease;
         }
-        .menu-btn.secondary {
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+        .menu-btn.tonal {
+            background-color: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+            box-shadow: none;
         }
         .menu-btn:active {
-            transform: scale(0.96);
+            transform: scale(0.97);
+            filter: brightness(0.92);
         }
 
-        /* 2. Map Selection Screen */
-        #mapScreen { z-index: 150; background: #0b0f14; }
+        /* 2. Map Selection Screen (Google Maps Style) */
+        #mapScreen { z-index: 150; background: var(--md-sys-color-background); }
         #leafletMap { width: 100%; height: 100%; }
         
-        .top-pill-btn {
+        /* Floating Search-Bar Style Top Header on Map */
+        .map-top-bar {
             position: absolute;
-            top: calc(14px + env(safe-area-inset-top));
-            left: calc(14px + env(safe-area-inset-left));
-            z-index: 1000;
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            color: #fff; border: 1px solid var(--glass-border);
-            padding: 9px 15px; border-radius: 12px;
-            font-size: 14px; font-weight: 600; cursor: pointer;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-            transition: transform 0.15s ease, opacity 0.25s ease;
+            top: calc(12px + env(safe-area-inset-top));
+            left: calc(12px + env(safe-area-inset-left));
+            right: calc(12px + env(safe-area-inset-right));
+            height: 52px;
+            background: var(--md-sys-color-surface-container);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 9999px;
+            display: flex; align-items: center; padding: 0 8px 0 6px; gap: 8px;
+            z-index: 1000; box-shadow: var(--md-elevation-3);
         }
-        .top-pill-btn:active { transform: scale(0.95); }
-
+        .icon-btn-circle {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: transparent; border: none;
+            color: var(--md-sys-color-on-surface);
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; flex-shrink: 0;
+        }
+        .icon-btn-circle:active { background: rgba(255, 255, 255, 0.1); }
+        
         #mapInstructions {
-            position: absolute;
-            top: calc(14px + env(safe-area-inset-top));
-            right: calc(14px + env(safe-area-inset-right));
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
-            color: #fff; padding: 9px 14px; border-radius: 12px;
-            z-index: 1000; font-size: 13px; font-weight: 600;
-            max-width: calc(100vw - 130px); text-align: right;
+            font-size: 14px; font-weight: 400;
+            color: var(--md-sys-color-on-surface-variant);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
+
+        /* Material Extended FAB for Confirm Spawn */
         #confirmMapBtn {
             position: absolute;
             bottom: calc(28px + env(safe-area-inset-bottom));
-            left: 50%; transform: translateX(-50%) translateY(15px);
-            padding: 15px 34px; font-size: 17px; font-weight: 700;
-            background: linear-gradient(135deg, #00c853, #009624);
-            color: white; border: 1px solid rgba(255, 255, 255, 0.25);
-            border-radius: 14px; z-index: 1000; cursor: pointer;
-            box-shadow: 0 10px 25px rgba(0, 200, 83, 0.35);
+            left: 50%; transform: translateX(-50%) translateY(16px);
+            height: 56px; padding: 0 26px;
+            display: inline-flex; align-items: center; gap: 10px;
+            font-family: 'Roboto', sans-serif; font-size: 15px; font-weight: 500;
+            background-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            border: none; border-radius: 16px;
+            z-index: 1000; cursor: pointer;
+            box-shadow: var(--md-elevation-3);
             opacity: 0; pointer-events: none;
-            transition: opacity 0.25s var(--ease-smooth), transform 0.25s var(--ease-smooth);
+            transition: opacity 0.25s var(--md-motion-standard), transform 0.25s var(--md-motion-standard);
         }
         #confirmMapBtn.visible {
             opacity: 1; pointer-events: auto;
@@ -126,24 +177,24 @@
         }
         #confirmMapBtn:active { transform: translateX(-50%) scale(0.96); }
 
-        /* 3. Loading Transition Overlay */
+        /* 3. Material Loading Scrim & Progress Indicator */
         #loadingOverlay {
             position: fixed; inset: 0; z-index: 250;
-            background: rgba(11, 15, 20, 0.78);
-            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            background: rgba(19, 19, 20, 0.86);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             opacity: 0; visibility: hidden; pointer-events: none;
-            transition: opacity 0.25s ease, visibility 0.25s ease;
+            transition: opacity 0.22s ease, visibility 0.22s ease;
         }
         #loadingOverlay.active { opacity: 1; visibility: visible; pointer-events: auto; }
-        .spinner {
-            width: 38px; height: 38px; border-radius: 50%;
-            border: 3px solid rgba(255, 255, 255, 0.15);
-            border-top-color: var(--accent);
-            animation: spin 0.8s linear infinite; margin-bottom: 14px;
+        .md-spinner {
+            width: 40px; height: 40px; border-radius: 50%;
+            border: 3.5px solid var(--md-sys-color-surface-container-high);
+            border-top-color: var(--md-sys-color-primary);
+            animation: spin 0.85s cubic-bezier(0.4, 0.15, 0.6, 0.85) infinite;
+            margin-bottom: 16px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        #loadingText { font-size: 14px; font-weight: 600; color: #dbe4ee; letter-spacing: 0.3px; }
+        #loadingText { font-size: 14px; font-weight: 500; color: var(--md-sys-color-on-surface); letter-spacing: 0.2px; }
 
         /* 4. AR / 3D Scene Elements */
         #cameraFeed { 
@@ -154,90 +205,125 @@
 
         .ar-hud {
             opacity: 0; visibility: hidden;
-            transition: opacity 0.35s var(--ease-smooth), visibility 0.35s;
+            transition: opacity 0.3s var(--md-motion-standard), visibility 0.3s;
         }
         .ar-hud.active { opacity: 1; visibility: visible; }
+
+        /* Top-Left Back Pill */
+        .md-top-pill {
+            position: absolute;
+            top: calc(14px + env(safe-area-inset-top));
+            left: calc(14px + env(safe-area-inset-left));
+            height: 40px; padding: 0 16px 0 12px;
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--md-sys-color-surface-container);
+            color: var(--md-sys-color-on-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 9999px;
+            font-family: 'Roboto', sans-serif; font-size: 14px; font-weight: 500;
+            cursor: pointer; z-index: 20;
+            box-shadow: var(--md-elevation-2);
+        }
+        .md-top-pill:active { background: var(--md-sys-color-surface-container-high); }
+
+        /* Top-Right Compass Pill */
+        #compassBox {
+            position: absolute;
+            top: calc(14px + env(safe-area-inset-top));
+            right: calc(14px + env(safe-area-inset-right));
+            height: 40px; padding: 0 14px;
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--md-sys-color-surface-container);
+            color: var(--md-sys-color-primary);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 9999px;
+            font-weight: 500; font-size: 14px; font-variant-numeric: tabular-nums;
+            z-index: 20; box-shadow: var(--md-elevation-2);
+        }
         
-        /* Auto-stacking Left HUD Container */
+        /* Auto-stacking Left Material Cards */
         #leftHudColumn {
             position: absolute;
-            top: calc(60px + env(safe-area-inset-top));
+            top: calc(64px + env(safe-area-inset-top));
             left: calc(14px + env(safe-area-inset-left));
-            width: min(290px, calc(100vw - 28px));
+            width: min(300px, calc(100vw - 28px));
             display: flex; flex-direction: column; gap: 8px;
             z-index: 10; pointer-events: none;
         }
 
         #ui { 
-            color: #ffffff;
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
-            padding: 11px 14px; border-radius: 12px;
-            line-height: 1.45; font-size: 13px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            background: rgba(30, 31, 32, 0.92);
+            color: var(--md-sys-color-on-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            padding: 12px 16px; border-radius: 20px;
+            line-height: 1.4; font-size: 13px;
+            box-shadow: var(--md-elevation-2);
+        }
+        
+        .md-chip-row {
+            display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+        }
+        .md-status-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: var(--md-sys-color-surface-container-high);
+            color: var(--md-sys-color-on-surface-variant);
+            padding: 3px 9px; border-radius: 8px;
+            font-size: 11px; font-weight: 500;
         }
         
         #explanationBox {
-            color: #f1f5f9;
-            background: rgba(12, 18, 26, 0.85);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
-            border-left: 4px solid var(--accent);
-            padding: 10px 13px; border-radius: 12px;
-            line-height: 1.4; font-size: 12.5px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            background: rgba(40, 42, 44, 0.94);
+            color: var(--md-sys-color-on-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            padding: 12px 16px; border-radius: 20px;
+            line-height: 1.45; font-size: 13px;
+            box-shadow: var(--md-elevation-2);
             display: none;
-            animation: slideUpFade 0.22s var(--ease-smooth);
+            animation: mdCardEnter 0.22s var(--md-motion-standard);
         }
-        @keyframes slideUpFade {
+        @keyframes mdCardEnter {
             from { opacity: 0; transform: translateY(6px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Compass UI */
-        #compassBox {
-            position: absolute;
-            top: calc(14px + env(safe-area-inset-top));
-            right: calc(14px + env(safe-area-inset-right));
-            color: var(--accent-green);
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
-            padding: 9px 14px; border-radius: 12px;
-            font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums;
-            z-index: 10; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Collapsible Bottom Sliders Drawer */
+        /* Google Maps Style Collapsible Bottom Sheet */
         #bottomSliders { 
             position: absolute;
-            bottom: calc(16px + env(safe-area-inset-bottom));
-            left: 50%; transform: translateX(-50%);
-            width: min(92vw, 460px);
-            background: var(--glass-bg);
-            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-            border: 1px solid var(--glass-border);
-            padding: 12px 16px; border-radius: 16px; color: white;
-            z-index: 10; pointer-events: auto;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-            transition: transform 0.3s var(--ease-smooth), opacity 0.3s ease;
+            bottom: 0; left: 50%; transform: translateX(-50%);
+            width: min(100vw, 480px);
+            background: var(--md-sys-color-surface);
+            border-top: 1px solid var(--md-sys-color-outline);
+            border-left: 1px solid var(--md-sys-color-outline);
+            border-right: 1px solid var(--md-sys-color-outline);
+            border-radius: 28px 28px 0 0;
+            padding: 10px 20px calc(18px + env(safe-area-inset-bottom)) 20px;
+            color: var(--md-sys-color-on-surface);
+            z-index: 20; pointer-events: auto;
+            box-shadow: var(--md-elevation-3);
+        }
+        .sheet-handle-area {
+            display: flex; flex-direction: column; align-items: center;
+            cursor: pointer; user-select: none; padding-bottom: 4px;
+        }
+        .sheet-drag-pill {
+            width: 32px; height: 4px; border-radius: 2px;
+            background: var(--md-sys-color-outline);
+            margin-bottom: 8px;
         }
         .drawer-header {
-            display: flex; justify-content: space-between; align-items: center;
-            cursor: pointer; user-select: none; padding-bottom: 2px;
+            width: 100%; display: flex; justify-content: space-between; align-items: center;
         }
         .drawer-title {
-            font-size: 12px; font-weight: 700; text-transform: uppercase;
-            letter-spacing: 0.8px; color: #cbd5e1;
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 13px; font-weight: 500; color: var(--md-sys-color-on-surface);
         }
         #toggleDrawerIcon {
-            font-size: 12px; color: var(--accent); font-weight: 700;
-            transition: transform 0.25s ease;
+            color: var(--md-sys-color-on-surface-variant);
+            transition: transform 0.25s var(--md-motion-standard);
         }
         #slidersBody {
-            overflow: hidden; max-height: 260px; margin-top: 10px;
-            transition: max-height 0.3s var(--ease-smooth), margin-top 0.3s ease, opacity 0.25s ease;
+            overflow: hidden; max-height: 280px; margin-top: 12px;
+            transition: max-height 0.3s var(--md-motion-standard), margin-top 0.3s ease, opacity 0.22s ease;
             opacity: 1;
         }
         #bottomSliders.collapsed #slidersBody {
@@ -247,100 +333,143 @@
             transform: rotate(180deg);
         }
 
-        .slider-row { display: flex; flex-direction: column; margin-bottom: 12px; font-size: 13px; }
+        .slider-row { display: flex; flex-direction: column; margin-bottom: 14px; }
         .slider-row:last-child { margin-bottom: 0; }
-        .slider-label-row { display: flex; justify-content: space-between; color: #e2e8f0; font-weight: 500; }
-        .slider-val { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+        .slider-label-row { 
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 13px; color: var(--md-sys-color-on-surface-variant); font-weight: 500;
+        }
+        .slider-badge { 
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+            padding: 2px 10px; border-radius: 9999px;
+            font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
+        }
         .slider-row input[type="range"] { 
-            width: 100%; margin-top: 6px; accent-color: var(--accent); height: 5px;
+            width: 100%; margin-top: 8px; accent-color: var(--md-sys-color-primary);
+            height: 6px; cursor: pointer;
         }
         
-        /* Precision Reticle Crosshair */
+        /* Material Precision Reticle */
         #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 22px; height: 22px;
-            margin: -11px 0 0 -11px;
-            border: 2px solid rgba(255, 255, 255, 0.75); border-radius: 50%;
+            position: absolute; top: 50%; left: 50%; width: 24px; height: 24px;
+            margin: -12px 0 0 -12px;
+            border: 2px solid rgba(227, 227, 227, 0.85); border-radius: 50%;
             z-index: 10; pointer-events: none;
-            transition: border-color 0.2s ease, transform 0.2s ease;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.45);
+            transition: border-color 0.2s var(--md-motion-standard), transform 0.2s var(--md-motion-standard);
         }
         #crosshair::after {
             content: ""; position: absolute; top: 50%; left: 50%;
-            width: 4px; height: 4px; margin: -2px 0 0 -2px;
-            background: #fff; border-radius: 50%;
+            width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
+            background: #e3e3e3; border-radius: 50%;
             transition: background 0.2s ease;
         }
         #crosshair.locked {
-            border-color: var(--accent-green);
-            transform: scale(1.12);
+            border-color: var(--md-sys-color-tertiary);
+            transform: scale(1.15);
         }
         #crosshair.locked::after {
-            background: var(--accent-green);
+            background: var(--md-sys-color-tertiary);
         }
     </style>
 </head>
 <body>
     <!-- 1. Main Menu -->
     <div id="menuScreen" class="screen-layer active">
-        <div class="menu-badge">0.5m High-Res DTM</div>
-        <h1>Hong Kong Geoscientific Explorer</h1>
+        <div class="app-icon-container">
+            <span class="material-symbols-outlined">terrain</span>
+        </div>
+        <div class="menu-chip">
+            <span class="material-symbols-outlined" style="font-size:15px;">grid_on</span>
+            0.5m High-Res DTM
+        </div>
+        <h1>HK Geoscientific Explorer</h1>
         <p class="menu-subtitle">Real-time 3D lithological terrain overlay for geological field mapping.</p>
-        <button class="menu-btn" id="btnLiveMode">Live AR Mode</button>
-        <button class="menu-btn secondary" id="btnMapMode">Virtual Map Mode</button>
+        <button class="menu-btn" id="btnLiveMode">
+            <span class="material-symbols-outlined">photo_camera</span>
+            Live AR Mode
+        </button>
+        <button class="menu-btn tonal" id="btnMapMode">
+            <span class="material-symbols-outlined">map</span>
+            Virtual Map Mode
+        </button>
     </div>
 
     <!-- 2. Interactive Map Screen -->
     <div id="mapScreen" class="screen-layer">
-        <button id="btnMapBack" class="top-pill-btn">← Menu</button>
-        <div id="mapInstructions">Tap highlighted area to spawn</div>
+        <div class="map-top-bar">
+            <button id="btnMapBack" class="icon-btn-circle" aria-label="Back to Menu">
+                <span class="material-symbols-outlined">arrow_back</span>
+            </button>
+            <span id="mapInstructions">Tap inside the green region to spawn</span>
+        </div>
         <div id="leafletMap"></div>
-        <button id="confirmMapBtn">Spawn Here</button>
+        <button id="confirmMapBtn">
+            <span class="material-symbols-outlined">my_location</span>
+            Spawn Here
+        </button>
     </div>
 
     <!-- 3. Loading Transition Overlay -->
     <div id="loadingOverlay">
-        <div class="spinner"></div>
+        <div class="md-spinner"></div>
         <div id="loadingText">Initializing terrain engine...</div>
     </div>
 
     <!-- 4. Main 3D / AR UI -->
-    <button id="btnBack" class="top-pill-btn ar-hud">← Menu</button>
+    <button id="btnBack" class="md-top-pill ar-hud">
+        <span class="material-symbols-outlined">arrow_back</span>
+        Menu
+    </button>
     <video id="cameraFeed" autoplay playsinline></video>
     
     <div id="leftHudColumn" class="ar-hud">
         <div id="ui">
-            <div id="infoText">Aim at terrain...</div>
-            <div id="gpsText" style="font-size: 0.85em; color:#94a3b8; margin-top: 4px;">GPS: Waiting...</div>
-            <div id="fpsText" style="font-size: 0.85em; color:#facc15; margin-top: 2px;"></div>
+            <div id="infoText">Aim reticle at terrain...</div>
+            <div class="md-chip-row">
+                <span id="gpsText" class="md-status-chip">GPS: Waiting</span>
+                <span id="fpsText" class="md-status-chip">-- fps</span>
+            </div>
         </div>
         <div id="explanationBox"></div>
     </div>
     
-    <div id="compassBox" class="ar-hud">0° N</div>
+    <div id="compassBox" class="ar-hud">
+        <span class="material-symbols-outlined" style="font-size:17px;">explore</span>
+        <span id="compassVal">0° N</span>
+    </div>
     
     <div id="bottomSliders" class="ar-hud">
-        <div class="drawer-header" id="drawerToggle">
-            <span class="drawer-title">Field Controls</span>
-            <span id="toggleDrawerIcon">▾</span>
+        <div class="sheet-handle-area" id="drawerToggle">
+            <div class="sheet-drag-pill"></div>
+            <div class="drawer-header">
+                <span class="drawer-title">
+                    <span class="material-symbols-outlined" style="font-size:18px; color:var(--md-sys-color-primary);">tune</span>
+                    Field Controls
+                </span>
+                <span id="toggleDrawerIcon" class="material-symbols-outlined">expand_more</span>
+            </div>
         </div>
         <div id="slidersBody">
             <div class="slider-row">
                 <div class="slider-label-row">
                     <label for="heightSlider">Camera Height</label>
-                    <span class="slider-val">+<span id="heightVal">10</span>m</span>
+                    <span class="slider-badge">+<span id="heightVal">10</span> m</span>
                 </div>
                 <input type="range" id="heightSlider" min="2" max="300" step="2" value="10">
             </div>
             <div class="slider-row">
                 <div class="slider-label-row">
                     <label for="viewDistance">Render Distance</label>
-                    <span class="slider-val"><span id="distVal">800</span>m</span>
+                    <span class="slider-badge"><span id="distVal">800</span> m</span>
                 </div>
                 <input type="range" id="viewDistance" min="100" max="2000" step="50" value="800">
             </div>
             <div class="slider-row">
                 <div class="slider-label-row">
                     <label for="opacitySlider">Terrain Opacity</label>
-                    <span class="slider-val"><span id="opacityVal">0.65</span></span>
+                    <span class="slider-badge"><span id="opacityVal">0.65</span></span>
                 </div>
                 <input type="range" id="opacitySlider" min="0" max="1" step="0.05" value="0.65">
             </div>
@@ -353,7 +482,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    <script src="app.js?v=18"></script>
+    <script src="app.js?v=19"></script>
 
     <script>
       if ('serviceWorker' in navigator) {

@@ -226,19 +226,20 @@ function getOptimalStrideForTile(tr, tc) {
 function updateStrideHudDisplay() {
     let el = document.getElementById('strideText');
     if (!el) {
-        const ui = document.getElementById('ui');
-        if (ui) {
-            el = document.createElement('div');
+        const chipRow = document.querySelector('#ui .md-chip-row');
+        if (chipRow) {
+            el = document.createElement('span');
             el.id = 'strideText';
-            el.style.cssText = 'font-size:0.85em; color:#00d2ff; margin-top:2px;';
-            ui.appendChild(el);
+            el.className = 'md-status-chip';
+            el.style.color = '#a8c7fa';
+            chipRow.appendChild(el);
         }
     }
     if (el && globalMeta) {
         const loadedTiles = Object.values(activeTiles).filter(t => t.isLoaded);
         const strides = [...new Set(loadedTiles.map(t => t.stride))].sort((a, b) => a - b);
         const strideStr = strides.length ? strides.join('/') : '1';
-        el.innerText = `Res: ${globalMeta.resolution}m | LOD: ${strideStr} | Tiles: ${loadedTiles.length}`;
+        el.innerText = `LOD ${strideStr} · ${loadedTiles.length} tiles`;
     }
 }
 
@@ -261,9 +262,9 @@ async function openMapMode() {
         }).addTo(mapInstance);
 
         mapBoundsRect = L.rectangle(geoInfo.bounds, {
-            color: "#00e676",
+            color: "#6dd58c",
             weight: 2,
-            fillOpacity: 0.1
+            fillOpacity: 0.12
         }).addTo(mapInstance);
 
         mapInstance.on('click', function(e) {
@@ -276,7 +277,7 @@ async function openMapMode() {
     } else {
         mapInstance.setView([geoInfo.centerLat, geoInfo.centerLon], 15);
     }
-    setTimeout(() => mapInstance.invalidateSize(), 360);
+    setTimeout(() => mapInstance.invalidateSize(), 320);
 }
 
 async function confirmMapLocation() {
@@ -347,7 +348,7 @@ async function initThreeJS() {
             startGPSWatcher(); 
         } else if (currentMode === 'map') {
             await setCameraToLocation(selectedLat, selectedLon);
-            document.getElementById('gpsText').innerText = "Mode: Virtual Map View";
+            document.getElementById('gpsText').innerText = "Virtual Map";
         }
         return;
     }
@@ -433,7 +434,7 @@ async function initThreeJS() {
         startGPSWatcher(); 
     } else if (currentMode === 'map') {
         await setCameraToLocation(selectedLat, selectedLon);
-        document.getElementById('gpsText').innerText = "Mode: Virtual Map View";
+        document.getElementById('gpsText').innerText = "Virtual Map";
     }
     
     animate();
@@ -464,10 +465,10 @@ async function setCameraToLocation(lat, lon) {
 
 function startGPSWatcher() {
     if (!navigator.geolocation) {
-        document.getElementById('gpsText').innerText = "GPS not supported.";
+        document.getElementById('gpsText').innerText = "No GPS";
         return;
     }
-    document.getElementById('gpsText').innerText = "Acquiring GPS signal...";
+    document.getElementById('gpsText').innerText = "Locating...";
     
     geoWatchId = navigator.geolocation.watchPosition((position) => {
         let lat = position.coords.latitude;
@@ -476,13 +477,13 @@ function startGPSWatcher() {
             const geoInfo = getDatasetGeoInfo();
             lat = geoInfo.centerLat;
             lon = geoInfo.centerLon;
-            document.getElementById('gpsText').innerText = "GPS: Spoofed to Dataset Center";
+            document.getElementById('gpsText').innerText = "Demo Center";
         } else {
-            document.getElementById('gpsText').innerText = `GPS: Live (${position.coords.accuracy.toFixed(1)}m)`;
+            document.getElementById('gpsText').innerText = `GPS ±${Math.round(position.coords.accuracy)}m`;
         }
         setCameraToLocation(lat, lon);
     }, (error) => {
-        document.getElementById('gpsText').innerText = "GPS Signal Lost.";
+        document.getElementById('gpsText').innerText = "GPS Lost";
     }, { enableHighAccuracy: true, maximumAge: 0 });
 }
 
@@ -701,7 +702,10 @@ function updateCompass() {
     else if (heading > 247.5 && heading <= 292.5) card = "W";
     else if (heading > 292.5 && heading <= 337.5) card = "NW";
     
-    document.getElementById('compassBox').innerText = `${Math.round(heading)}° ${card}`;
+    const compassVal = document.getElementById('compassVal');
+    if (compassVal) {
+        compassVal.innerText = `${Math.round(heading)}° ${card}`;
+    }
 }
 
 function updateRaycaster() {
@@ -712,7 +716,7 @@ function updateRaycaster() {
     if (!hit) {
         expBox.style.display = 'none';
         crosshair.classList.remove('locked');
-        document.getElementById('infoText').innerHTML = "Aim at terrain...";
+        document.getElementById('infoText').innerHTML = `<span style="color:#c4c7c5;">Aim reticle at terrain...</span>`;
         return;
     }
 
@@ -721,11 +725,13 @@ function updateRaycaster() {
     const easting = globalMeta.origin_x + hit.x;
     const northing = globalMeta.origin_y - hit.z;
     document.getElementById('infoText').innerHTML =
-        `<b>Target Locked:</b> <span style="color:#00e676; font-weight:700;">${rockCode}</span><br>` +
-        `Elev: ~${Math.round(hit.y)} m<br>` +
-        `<span style="font-size: 0.85em; color: #cbd5e1;">HK1980: E ${Math.round(easting)}, N ${Math.round(northing)}</span>`;
+        `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:2px;">` +
+            `<span style="font-size:15px; font-weight:700; color:#6dd58c;">${rockCode}</span>` +
+            `<span style="font-size:12px; color:#c4c7c5;">Elev ${Math.round(hit.y)} m</span>` +
+        `</div>` +
+        `<div style="font-size:12px; color:#c4c7c5;">HK1980 · E ${Math.round(easting)}, N ${Math.round(northing)}</div>`;
     expBox.style.display = 'block';
-    expBox.innerHTML = GEOLOGY_DICT[rockCode] || "Unmapped";
+    expBox.innerHTML = GEOLOGY_DICT[rockCode] || "Unmapped geological unit";
 }
 
 let lastHud = 0, frames = 0, fpsStart = 0;
