@@ -1,5 +1,5 @@
 let scene, camera, cameraGroup, renderer, controls;
-let activeTiles = {};
+let activeTiles = {}; // Stores dynamically loaded terrain tiles
 let raycaster, centerScreen;
 let globalMeta;
 let rockColors = {}; 
@@ -8,7 +8,6 @@ let geoWatchId = null;
 let currentMode = null; 
 let mapInstance = null;
 let mapMarker = null;
-let mapBoundsRect = null;
 let selectedLat = 22.3193, selectedLon = 114.1694;
 
 let yawOffset = 0, pitchOffset = 0;
@@ -17,6 +16,7 @@ let gpsSceneX = 0, gpsSceneZ = 0;
 let currentGroundElev = 20;
 let heightOffset = 10;
 
+// Reusable quaternion helpers for drift-free pitch/yaw camera calibration
 const worldUp = new THREE.Vector3(0, 1, 0);
 const localRight = new THREE.Vector3(1, 0, 0);
 const yawQuat = new THREE.Quaternion();
@@ -146,45 +146,17 @@ const GEOLOGY_DICT = {
 
 proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.31213333333334 +lon_0=114.1785555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,0.067753,-2.24365,-1.15883,-1.09425 +units=m +no_defs");
 
-// UI Event Listeners
 document.getElementById('btnLiveMode').addEventListener('click', startLiveMode);
 document.getElementById('btnMapMode').addEventListener('click', openMapMode);
 document.getElementById('confirmMapBtn').addEventListener('click', confirmMapLocation);
 document.getElementById('btnBack').addEventListener('click', returnToMenu);
-document.getElementById('btnMapBack').addEventListener('click', returnToMenu);
-document.getElementById('drawerToggle').addEventListener('click', () => {
+document.getElementById('btnMapBack').addEventListener('click', () => {
+    document.getElementById('mapScreen').style.display = 'none';
+    document.getElementById('menuScreen').style.display = 'flex';
+});
+document.getElementById('sheetToggle').addEventListener('click', () => {
     document.getElementById('bottomSliders').classList.toggle('collapsed');
 });
-
-// Smooth Screen & Loading Transition Helpers
-function setActiveScreen(screenId) {
-    document.querySelectorAll('.screen-layer').forEach(el => el.classList.remove('active'));
-    if (screenId) {
-        const target = document.getElementById(screenId);
-        if (target) target.classList.add('active');
-    }
-}
-
-function setLoading(isLoading, message = "Loading...") {
-    const overlay = document.getElementById('loadingOverlay');
-    const text = document.getElementById('loadingText');
-    if (text) text.innerText = message;
-    if (isLoading) {
-        overlay.classList.add('active');
-    } else {
-        overlay.classList.remove('active');
-    }
-}
-
-function showUIElements() {
-    document.querySelectorAll('.ar-hud').forEach(el => el.classList.add('active'));
-    updateStrideHudDisplay();
-}
-
-function hideUIElements() {
-    document.querySelectorAll('.ar-hud').forEach(el => el.classList.remove('active'));
-    document.getElementById('explanationBox').style.display = 'none';
-}
 
 function generateColors(dictionary) {
     rockColors[0] = new THREE.Color("white"); 
@@ -194,77 +166,37 @@ function generateColors(dictionary) {
     }
 }
 
-function getDatasetGeoInfo() {
-    const minE = globalMeta.origin_x;
-    const maxE = globalMeta.origin_x + (globalMeta.cols * globalMeta.resolution);
-    const maxN = globalMeta.origin_y;
-    const minN = globalMeta.origin_y - (globalMeta.rows * globalMeta.resolution);
-
-    const centerHK = [(minE + maxE) / 2, (minN + maxN) / 2];
-    const centerWGS = proj4("EPSG:2326", "WGS84", centerHK);
-    const nwWGS = proj4("EPSG:2326", "WGS84", [minE, maxN]);
-    const seWGS = proj4("EPSG:2326", "WGS84", [maxE, minN]);
-
-    return {
-        centerLat: centerWGS[1],
-        centerLon: centerWGS[0],
-        bounds: [[nwWGS[1], nwWGS[0]], [seWGS[1], seWGS[0]]]
-    };
-}
-
+// Distance-based LOD calculation to stay strictly within iOS WebGL memory limits
 function getOptimalStrideForTile(tr, tc) {
     const tileMeters = globalMeta.tile_size * globalMeta.resolution;
     const tileCenterX = (tc + 0.5) * tileMeters;
     const tileCenterZ = (tr + 0.5) * tileMeters;
     const dist = Math.hypot(tileCenterX - gpsSceneX, tileCenterZ - gpsSceneZ);
 
-    if (dist <= 280) return 1;       // 0.5m mesh for immediate slopes
-    if (dist <= 550) return 2;       // 1.0m mesh (75% less memory)
-    return 4;                        // 2.0m mesh (93.75% less memory)
+    if (dist <= 2800) return 1;      // 5m mesh for immediate slopes
+    if (dist <= 5000) return 4;      // 20m mesh (94% less memory than stride 1)
+    if (dist <= 8500) return 8;      // 40m mesh (98.4% less memory)
+    return 16;                       // 80m mesh for distant horizon peaks
 }
 
 function updateStrideHudDisplay() {
-    let el = document.getElementById('strideText');
-    if (!el) {
-        const chipRow = document.querySelector('#ui .md-chip-row');
-        if (chipRow) {
-            el = document.createElement('span');
-            el.id = 'strideText';
-            el.className = 'md-status-chip';
-            el.style.color = '#a8c7fa';
-            chipRow.appendChild(el);
-        }
-    }
+    const el = document.getElementById('strideText');
     if (el && globalMeta) {
         const loadedTiles = Object.values(activeTiles).filter(t => t.isLoaded);
         const strides = [...new Set(loadedTiles.map(t => t.stride))].sort((a, b) => a - b);
         const strideStr = strides.length ? strides.join('/') : '1';
-        el.innerText = `LOD ${strideStr} · ${loadedTiles.length} tiles`;
+        el.innerText = `• LOD ${strideStr} (${loadedTiles.length} tiles)`;
     }
 }
 
-async function openMapMode() {
-    setActiveScreen('mapScreen');
-    
-    if (!globalMeta) {
-        setLoading(true, "Loading geological metadata...");
-        globalMeta = await (await fetch('data/meta.json')).json();
-        generateColors(globalMeta.rock_dictionary);
-        setLoading(false);
-    }
-
-    const geoInfo = getDatasetGeoInfo();
+function openMapMode() {
+    document.getElementById('menuScreen').style.display = 'none';
+    document.getElementById('mapScreen').style.display = 'block';
     
     if (!mapInstance) {
-        mapInstance = L.map('leafletMap', { zoomControl: false }).setView([geoInfo.centerLat, geoInfo.centerLon], 15);
+        mapInstance = L.map('leafletMap').setView([22.35, 114.12], 11);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19, attribution: '© OpenStreetMap'
-        }).addTo(mapInstance);
-
-        mapBoundsRect = L.rectangle(geoInfo.bounds, {
-            color: "#6dd58c",
-            weight: 2,
-            fillOpacity: 0.12
+            maxZoom: 18, attribution: '© OpenStreetMap'
         }).addTo(mapInstance);
 
         mapInstance.on('click', function(e) {
@@ -272,31 +204,25 @@ async function openMapMode() {
             mapMarker = L.marker(e.latlng).addTo(mapInstance);
             selectedLat = e.latlng.lat;
             selectedLon = e.latlng.lng;
-            document.getElementById('confirmMapBtn').classList.add('visible');
+            document.getElementById('confirmMapBtn').style.display = 'inline-flex';
         });
-    } else {
-        mapInstance.setView([geoInfo.centerLat, geoInfo.centerLon], 15);
     }
-    setTimeout(() => mapInstance.invalidateSize(), 320);
+    setTimeout(() => mapInstance.invalidateSize(), 200);
 }
 
 async function confirmMapLocation() {
     currentMode = 'map';
-    setActiveScreen(null);
-    setLoading(true, "Loading 3D terrain tiles...");
-    
+    document.getElementById('mapScreen').style.display = 'none';
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try { await DeviceOrientationEvent.requestPermission(); } catch (e) { console.error(e); }
+        await DeviceOrientationEvent.requestPermission();
     }
-    await loadAppMetadata();
     showUIElements();
-    setLoading(false);
+    loadAppMetadata();
 }
 
 async function startLiveMode() {
     currentMode = 'live';
-    setActiveScreen(null);
-    setLoading(true, "Starting camera & sensors...");
+    document.getElementById('menuScreen').style.display = 'none';
     
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         try { await DeviceMotionEvent.requestPermission(); } catch (e) { console.error(e); }
@@ -308,10 +234,17 @@ async function startLiveMode() {
         video.style.display = 'block';
     } catch (err) { console.error("Camera access denied", err); }
     
-    setLoading(true, "Loading geological terrain...");
-    await loadAppMetadata();
     showUIElements();
-    setLoading(false);
+    loadAppMetadata();
+}
+
+function showUIElements() {
+    document.getElementById('ui').style.display = 'block';
+    document.getElementById('bottomSliders').style.display = 'block';
+    document.getElementById('crosshair').style.display = 'block';
+    document.getElementById('compassBox').style.display = 'inline-flex';
+    document.getElementById('btnBack').style.display = 'inline-flex';
+    updateStrideHudDisplay();
 }
 
 function returnToMenu() {
@@ -328,40 +261,49 @@ function returnToMenu() {
         geoWatchId = null;
     }
 
-    hideUIElements();
-    setLoading(false);
+    document.getElementById('ui').style.display = 'none';
+    document.getElementById('bottomSliders').style.display = 'none';
+    document.getElementById('crosshair').style.display = 'none';
+    document.getElementById('compassBox').style.display = 'none';
+    document.getElementById('explanationBox').style.display = 'none';
+    document.getElementById('btnBack').style.display = 'none';
+
     currentMode = null;
-    setActiveScreen('menuScreen');
+    document.getElementById('menuScreen').style.display = 'flex';
 }
 
 async function loadAppMetadata() {
-    if (!globalMeta) {
-        globalMeta = await (await fetch('data/meta.json')).json();
-        generateColors(globalMeta.rock_dictionary);
+    if (globalMeta) {
+        initThreeJS();
+        return;
     }
-    await initThreeJS();
+    document.getElementById('infoText').innerText = "Connecting to tile server...";
+    globalMeta = await (await fetch('data/meta.json')).json();
+    generateColors(globalMeta.rock_dictionary);
+    initThreeJS();
 }
 
-async function initThreeJS() {
+function initThreeJS() {
     if (renderer) {
         if (currentMode === 'live') {
             startGPSWatcher(); 
         } else if (currentMode === 'map') {
-            await setCameraToLocation(selectedLat, selectedLon);
-            document.getElementById('gpsText').innerText = "Virtual Map";
+            setCameraToLocation(selectedLat, selectedLon);
+            document.getElementById('gpsText').innerText = "Virtual Map View";
         }
         return;
     }
 
     scene = new THREE.Scene();
     const initialDistance = parseInt(document.getElementById('viewDistance').value);
-    scene.fog = new THREE.Fog(0x87CEEB, initialDistance * 0.6, initialDistance);
+    scene.fog = new THREE.Fog(0x87CEEB, initialDistance * 0.5, initialDistance);
     
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, initialDistance);
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, initialDistance);
     cameraGroup = new THREE.Group();
     scene.add(cameraGroup);
     cameraGroup.add(camera);
 
+    // Disable antialias and cap pixelRatio at 1.5 to reduce iOS WebGL VRAM pressure
     renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -370,7 +312,7 @@ async function initThreeJS() {
     controls = new THREE.DeviceOrientationControls(camera);
 
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
-    sun.position.set(1500, 1500, 1500); 
+    sun.position.set(3000, 2500, 3000); 
     scene.add(sun);
     scene.add(new THREE.AmbientLight(0x444444));
 
@@ -390,7 +332,7 @@ async function initThreeJS() {
         const dist = parseInt(e.target.value);
         camera.far = dist;
         camera.updateProjectionMatrix();
-        scene.fog.near = dist * 0.6;
+        scene.fog.near = dist * 0.5;
         scene.fog.far = dist;
         checkAndLoadTiles(dist);
     });
@@ -420,6 +362,7 @@ async function initThreeJS() {
             yawOffset += deltaX * 0.002;
             pitchOffset += deltaY * 0.002;
 
+            // Clamp vertical pitch so the view cannot flip upside down
             pitchOffset = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitchOffset));
 
             previousTouch.x = e.touches[0].clientX;
@@ -433,8 +376,8 @@ async function initThreeJS() {
     if (currentMode === 'live') {
         startGPSWatcher(); 
     } else if (currentMode === 'map') {
-        await setCameraToLocation(selectedLat, selectedLon);
-        document.getElementById('gpsText').innerText = "Virtual Map";
+        setCameraToLocation(selectedLat, selectedLon);
+        document.getElementById('gpsText').innerText = "Virtual Map View";
     }
     
     animate();
@@ -465,25 +408,23 @@ async function setCameraToLocation(lat, lon) {
 
 function startGPSWatcher() {
     if (!navigator.geolocation) {
-        document.getElementById('gpsText').innerText = "No GPS";
+        document.getElementById('gpsText').innerText = "GPS unsupported";
         return;
     }
-    document.getElementById('gpsText').innerText = "Locating...";
+    document.getElementById('gpsText').innerText = "Acquiring GPS...";
     
     geoWatchId = navigator.geolocation.watchPosition((position) => {
         let lat = position.coords.latitude;
         let lon = position.coords.longitude;
         if (lat > 50) { 
-            const geoInfo = getDatasetGeoInfo();
-            lat = geoInfo.centerLat;
-            lon = geoInfo.centerLon;
-            document.getElementById('gpsText').innerText = "Demo Center";
+            lat = 22.411; lon = 114.124; 
+            document.getElementById('gpsText').innerText = "GPS: Tai Mo Shan (Sim)";
         } else {
-            document.getElementById('gpsText').innerText = `GPS ±${Math.round(position.coords.accuracy)}m`;
+            document.getElementById('gpsText').innerText = `GPS: ±${position.coords.accuracy.toFixed(0)}m`;
         }
         setCameraToLocation(lat, lon);
     }, (error) => {
-        document.getElementById('gpsText').innerText = "GPS Lost";
+        document.getElementById('gpsText').innerText = "GPS Signal Lost";
     }, { enableHighAccuracy: true, maximumAge: 0 });
 }
 
@@ -522,6 +463,7 @@ async function checkAndLoadTiles(distanceMeters) {
         }
     }
 
+    // Unload distant tiles or tiles whose LOD stride needs to change
     for (let key in activeTiles) {
         if (!requiredTiles.has(key)) {
             disposeTile(key);
@@ -534,6 +476,7 @@ async function checkAndLoadTiles(distanceMeters) {
         }
     }
 
+    // Load newly required or LOD-updated tiles sequentially in small batches to avoid memory spikes
     for (let key of requiredTiles) {
         if (!activeTiles[key]) {
             const [tr, tc] = key.split('_').map(Number);
@@ -702,36 +645,34 @@ function updateCompass() {
     else if (heading > 247.5 && heading <= 292.5) card = "W";
     else if (heading > 292.5 && heading <= 337.5) card = "NW";
     
-    const compassVal = document.getElementById('compassVal');
-    if (compassVal) {
-        compassVal.innerText = `${Math.round(heading)}° ${card}`;
-    }
+    document.getElementById('compassText').innerText = `${Math.round(heading)}° ${card}`;
 }
 
 function updateRaycaster() {
     const hit = pickCentreRay();
     const expBox = document.getElementById('explanationBox');
-    const crosshair = document.getElementById('crosshair');
-
     if (!hit) {
         expBox.style.display = 'none';
-        crosshair.classList.remove('locked');
-        document.getElementById('infoText').innerHTML = `<span style="color:#c4c7c5;">Aim reticle at terrain...</span>`;
+        document.getElementById('infoText').innerHTML = `<span style="color:#C4C6D0;">Aim crosshair at terrain...</span>`;
         return;
     }
-
-    crosshair.classList.add('locked');
     const rockCode = globalMeta.rock_dictionary[hit.rock] || "";
     const easting = globalMeta.origin_x + hit.x;
     const northing = globalMeta.origin_y - hit.z;
+    const hexColor = rockColors[hit.rock] ? `#${rockColors[hit.rock].getHexString()}` : '#A8C7FA';
+
     document.getElementById('infoText').innerHTML =
-        `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:2px;">` +
-            `<span style="font-size:15px; font-weight:700; color:#6dd58c;">${rockCode}</span>` +
-            `<span style="font-size:12px; color:#c4c7c5;">Elev ${Math.round(hit.y)} m</span>` +
+        `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">` +
+        `<span style="display:inline-flex; align-items:center; gap:7px; font-weight:600; font-size:15px;">` +
+        `<span style="width:12px; height:12px; border-radius:50%; background:${hexColor}; display:inline-block; border:1px solid rgba(255,255,255,0.5);"></span>` +
+        `Unit: <span style="color:#6DD58C;">${rockCode}</span>` +
+        `</span>` +
+        `<span style="background:rgba(168,199,250,0.16); color:#A8C7FA; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600;">~${Math.round(hit.y)} m</span>` +
         `</div>` +
-        `<div style="font-size:12px; color:#c4c7c5;">HK1980 · E ${Math.round(easting)}, N ${Math.round(northing)}</div>`;
+        `<div style="font-size:12px; color:#C4C6D0; margin-top:4px;">HK1980: E ${Math.round(easting)}, N ${Math.round(northing)}</div>`;
+
     expBox.style.display = 'block';
-    expBox.innerHTML = GEOLOGY_DICT[rockCode] || "Unmapped geological unit";
+    expBox.innerHTML = GEOLOGY_DICT[rockCode] || "Unmapped unit";
 }
 
 let lastHud = 0, frames = 0, fpsStart = 0;
@@ -739,9 +680,11 @@ function animate(now = 0) {
     requestAnimationFrame(animate);
     controls.update();
 
+    // 1. Apply horizontal compass calibration around true vertical (World Up)
     yawQuat.setFromAxisAngle(worldUp, yawOffset);
     camera.quaternion.premultiply(yawQuat);
 
+    // 2. Apply vertical tilt around the screen's own horizontal axis (Local Right)
     pitchQuat.setFromAxisAngle(localRight, pitchOffset);
     camera.quaternion.multiply(pitchQuat);
 

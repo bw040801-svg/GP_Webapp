@@ -2,466 +2,589 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>HK Geology Explorer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Geoscientific AR Explorer</title>
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon-512.jpg">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
-    <!-- Google Fonts: Outfit & Material Symbols Outlined -->
+    <!-- Google Fonts: Outfit & Material Symbols -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,500,0..1,0" rel="stylesheet">
-    
-    <!-- Leaflet CSS -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,1,0" rel="stylesheet">
+
+    <!-- Leaflet CSS for the Open-Source Map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
         :root {
-            /* Material Design 3 Dark Scheme */
-            --md-sys-color-background: #131314;
-            --md-sys-color-surface: #1e1f20;
-            --md-sys-color-surface-container: #282a2c;
-            --md-sys-color-surface-container-high: #333537;
-            --md-sys-color-on-surface: #e3e3e3;
-            --md-sys-color-on-surface-variant: #c4c7c5;
-            --md-sys-color-primary: #a8c7fa;
-            --md-sys-color-on-primary: #062e6f;
-            --md-sys-color-secondary-container: #004a77;
-            --md-sys-color-on-secondary-container: #c2e7ff;
-            --md-sys-color-tertiary: #6dd58c;
-            --md-sys-color-outline: #444746;
-            --md-elevation-2: 0 2px 6px 2px rgba(0, 0, 0, 0.35), 0 1px 2px 0 rgba(0, 0, 0, 0.5);
-            --md-elevation-3: 0 4px 12px 3px rgba(0, 0, 0, 0.4), 0 1px 3px 0 rgba(0, 0, 0, 0.55);
-            --md-motion-standard: cubic-bezier(0.2, 0.0, 0, 1.0);
+            --md-sys-color-background: #141518;
+            --md-sys-color-surface: rgba(24, 26, 31, 0.82);
+            --md-sys-color-surface-high: rgba(34, 37, 44, 0.90);
+            --md-sys-color-on-surface: #E3E2E6;
+            --md-sys-color-on-surface-variant: #C4C6D0;
+            --md-sys-color-primary: #A8C7FA;
+            --md-sys-color-on-primary: #062E6F;
+            --md-sys-color-primary-container: #0842A0;
+            --md-sys-color-on-primary-container: #D3E3FD;
+            --md-sys-color-secondary-container: rgba(58, 63, 75, 0.85);
+            --md-sys-color-on-secondary-container: #DCE2F9;
+            --md-sys-color-tertiary: #6DD58C;
+            --md-sys-color-outline: rgba(255, 255, 255, 0.14);
+            --md-elevation-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
         }
 
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
 
-        body { 
-            margin: 0; overflow: hidden; background-color: var(--md-sys-color-background); 
-            touch-action: none; font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--md-sys-color-background);
             color: var(--md-sys-color-on-surface);
+            touch-action: none;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
         .material-symbols-outlined {
             font-size: 20px;
             line-height: 1;
             vertical-align: middle;
-            user-select: none;
         }
 
-        /* Screen Layer Transitions */
-        .screen-layer {
-            position: fixed; inset: 0;
-            opacity: 0; visibility: hidden; pointer-events: none;
-            transform: translateY(12px);
-            transition: opacity 0.3s var(--md-motion-standard), transform 0.3s var(--md-motion-standard), visibility 0.3s;
-        }
-        .screen-layer.active {
-            opacity: 1; visibility: visible; pointer-events: auto;
-            transform: translateY(0);
-        }
-        
-        /* 1. Home Screen with Photo Background */
+        /* 1. Main Menu Screen */
         #menuScreen {
-            background: linear-gradient(rgba(19, 19, 20, 0.52), rgba(19, 19, 20, 0.82)),
-                        url('./background.jpg') center center / cover no-repeat;
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center; z-index: 200;
-            padding: 24px;
-        }
-        #menuScreen h1 { 
-            color: #ffffff; margin: 0 0 10px 0; text-align: center; 
-            font-size: 32px; font-weight: 600; letter-spacing: -0.3px;
-            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
-        }
-        .menu-subtitle {
-            color: #e2e8f0; font-size: 15px; text-align: center;
-            max-width: 310px; line-height: 1.5; margin: 0 0 36px 0;
-            text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+            position: absolute;
+            inset: 0;
+            background-color: #16171A;
+            background-image: linear-gradient(180deg, rgba(20, 21, 24, 0.55) 0%, rgba(20, 21, 24, 0.25) 50%, rgba(20, 21, 24, 0.85) 100%), url('background.jpg');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: max(48px, env(safe-area-inset-top)) 24px max(48px, env(safe-area-inset-bottom));
+            z-index: 200;
         }
 
-        /* Material 3 Pill Buttons */
+        .menu-header {
+            text-align: center;
+            max-width: 340px;
+        }
+
+        .menu-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(168, 199, 250, 0.14);
+            color: var(--md-sys-color-primary);
+            border: 1px solid rgba(168, 199, 250, 0.28);
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-bottom: 14px;
+        }
+
+        #menuScreen h1 {
+            color: #FFFFFF;
+            margin: 0;
+            font-size: 30px;
+            font-weight: 600;
+            line-height: 1.2;
+            letter-spacing: -0.02em;
+        }
+
+        .menu-subtitle {
+            color: var(--md-sys-color-on-surface-variant);
+            font-size: 14px;
+            font-weight: 400;
+            margin-top: 8px;
+        }
+
+        .menu-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            width: 100%;
+            max-width: 300px;
+        }
+
         .menu-btn {
-            display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-            background-color: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            border: none; border-radius: 9999px;
-            height: 54px; padding: 0 28px;
-            font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: 0.1px;
-            margin: 6px 0; width: 100%; max-width: 280px; cursor: pointer;
-            box-shadow: var(--md-elevation-3);
-            transition: transform 0.16s var(--md-motion-standard), filter 0.16s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            border: none;
+            border-radius: 9999px;
+            padding: 16px 24px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: transform 0.15s ease, filter 0.15s ease;
+            box-shadow: var(--md-elevation-shadow);
         }
-        .menu-btn.tonal {
-            background-color: rgba(30, 31, 32, 0.88);
-            color: var(--md-sys-color-on-surface);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-        }
+
         .menu-btn:active {
             transform: scale(0.97);
-            filter: brightness(0.92);
+        }
+
+        .menu-btn-primary {
+            background-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+        }
+
+        .menu-btn-tonal {
+            background-color: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+            border: 1px solid var(--md-sys-color-outline);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
         }
 
         /* 2. Map Selection Screen */
-        #mapScreen { z-index: 150; background: var(--md-sys-color-background); }
-        #leafletMap { width: 100%; height: 100%; }
-        
-        /* Fit-to-Text Floating Pill Header on Map */
-        .map-top-bar {
+        #mapScreen {
             position: absolute;
-            top: calc(12px + env(safe-area-inset-top));
-            left: calc(12px + env(safe-area-inset-left));
-            width: fit-content;
-            max-width: calc(100vw - 24px);
-            height: 48px;
-            background: var(--md-sys-color-surface-container);
-            border: 1px solid var(--md-sys-color-outline);
-            border-radius: 9999px;
-            display: inline-flex; align-items: center; padding: 0 18px 0 6px; gap: 6px;
-            z-index: 1000; box-shadow: var(--md-elevation-3);
-        }
-        .icon-btn-circle {
-            width: 38px; height: 38px; border-radius: 50%;
-            background: transparent; border: none;
-            color: var(--md-sys-color-on-surface);
-            display: flex; align-items: center; justify-content: center;
-            cursor: pointer; flex-shrink: 0;
-        }
-        .icon-btn-circle:active { background: rgba(255, 255, 255, 0.1); }
-        
-        #mapInstructions {
-            font-size: 14px; font-weight: 400;
-            color: var(--md-sys-color-on-surface);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            inset: 0;
+            display: none;
+            z-index: 150;
         }
 
-        /* Material Extended FAB for Confirm Spawn */
+        #leafletMap {
+            width: 100%;
+            height: 100%;
+        }
+
+        #mapTopBar {
+            position: absolute;
+            top: max(16px, env(safe-area-inset-top));
+            left: 16px;
+            right: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        #btnMapBack {
+            pointer-events: auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 9999px;
+            background: var(--md-sys-color-surface-high);
+            color: var(--md-sys-color-on-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: var(--md-elevation-shadow);
+            cursor: pointer;
+        }
+
+        #mapInstructions {
+            pointer-events: none;
+            flex: 1;
+            text-align: center;
+            background: var(--md-sys-color-surface-high);
+            color: var(--md-sys-color-on-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 11px 18px;
+            border-radius: 9999px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: var(--md-elevation-shadow);
+        }
+
         #confirmMapBtn {
             position: absolute;
-            bottom: calc(28px + env(safe-area-inset-bottom));
-            left: 50%; transform: translateX(-50%) translateY(16px);
-            height: 56px; padding: 0 26px;
-            display: inline-flex; align-items: center; gap: 10px;
-            font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600;
+            bottom: max(36px, env(safe-area-inset-bottom));
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 32px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
             background-color: var(--md-sys-color-primary);
             color: var(--md-sys-color-on-primary);
-            border: none; border-radius: 16px;
-            z-index: 1000; cursor: pointer;
-            box-shadow: var(--md-elevation-3);
-            opacity: 0; pointer-events: none;
-            transition: opacity 0.25s var(--md-motion-standard), transform 0.25s var(--md-motion-standard);
+            border: none;
+            border-radius: 9999px;
+            box-shadow: var(--md-elevation-shadow);
+            z-index: 1000;
+            cursor: pointer;
         }
-        #confirmMapBtn.visible {
-            opacity: 1; pointer-events: auto;
-            transform: translateX(-50%) translateY(0);
-        }
-        #confirmMapBtn:active { transform: translateX(-50%) scale(0.96); }
 
-        /* 3. Material Loading Scrim & Progress Indicator */
-        #loadingOverlay {
-            position: fixed; inset: 0; z-index: 250;
-            background: rgba(19, 19, 20, 0.86);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            opacity: 0; visibility: hidden; pointer-events: none;
-            transition: opacity 0.22s ease, visibility 0.22s ease;
+        #confirmMapBtn:active {
+            transform: translateX(-50%) scale(0.97);
         }
-        #loadingOverlay.active { opacity: 1; visibility: visible; pointer-events: auto; }
-        .md-spinner {
-            width: 40px; height: 40px; border-radius: 50%;
-            border: 3.5px solid var(--md-sys-color-surface-container-high);
-            border-top-color: var(--md-sys-color-primary);
-            animation: spin 0.85s cubic-bezier(0.4, 0.15, 0.6, 0.85) infinite;
-            margin-bottom: 16px;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        #loadingText { font-size: 14px; font-weight: 500; color: var(--md-sys-color-on-surface); letter-spacing: 0.2px; }
 
-        /* 4. AR / 3D Scene Elements */
-        #cameraFeed { 
-            position: fixed; inset: 0; width: 100vw; height: 100vh; 
-            object-fit: cover; z-index: -1; display: none; 
-        }
-        canvas { display: block; position: fixed; inset: 0; z-index: 1; }
-
-        .ar-hud {
-            opacity: 0; visibility: hidden;
-            transition: opacity 0.3s var(--md-motion-standard), visibility 0.3s;
-        }
-        .ar-hud.active { opacity: 1; visibility: visible; }
-
-        /* Top-Left Back Pill */
-        .md-top-pill {
+        /* 3. AR / 3D Scene Elements */
+        #cameraFeed {
             position: absolute;
-            top: calc(14px + env(safe-area-inset-top));
-            left: calc(14px + env(safe-area-inset-left));
-            height: 40px; padding: 0 16px 0 12px;
-            display: inline-flex; align-items: center; gap: 6px;
-            background: var(--md-sys-color-surface-container);
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: -1;
+            display: none;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
+
+        /* Top Navigation & Compass Pills */
+        #btnBack {
+            position: absolute;
+            top: max(14px, env(safe-area-inset-top));
+            left: 14px;
+            z-index: 30;
+            display: none;
+            align-items: center;
+            gap: 6px;
+            background: var(--md-sys-color-surface);
             color: var(--md-sys-color-on-surface);
             border: 1px solid var(--md-sys-color-outline);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            padding: 9px 16px;
             border-radius: 9999px;
-            font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 500;
-            cursor: pointer; z-index: 20;
-            box-shadow: var(--md-elevation-2);
+            font-family: 'Outfit', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: var(--md-elevation-shadow);
+            cursor: pointer;
         }
-        .md-top-pill:active { background: var(--md-sys-color-surface-container-high); }
 
-        /* Top-Right Compass Pill */
+        #btnBack:active {
+            transform: scale(0.96);
+        }
+
         #compassBox {
             position: absolute;
-            top: calc(14px + env(safe-area-inset-top));
-            right: calc(14px + env(safe-area-inset-right));
-            height: 40px; padding: 0 14px;
-            display: inline-flex; align-items: center; gap: 6px;
-            background: var(--md-sys-color-surface-container);
-            color: var(--md-sys-color-primary);
-            border: 1px solid var(--md-sys-color-outline);
-            border-radius: 9999px;
-            font-weight: 500; font-size: 14px; font-variant-numeric: tabular-nums;
-            z-index: 20; box-shadow: var(--md-elevation-2);
-        }
-        
-        /* Auto-stacking Left Material Cards */
-        #leftHudColumn {
-            position: absolute;
-            top: calc(64px + env(safe-area-inset-top));
-            left: calc(14px + env(safe-area-inset-left));
-            width: min(300px, calc(100vw - 28px));
-            display: flex; flex-direction: column; gap: 8px;
-            z-index: 10; pointer-events: none;
-        }
-
-        #ui { 
-            background: rgba(30, 31, 32, 0.92);
-            color: var(--md-sys-color-on-surface);
-            border: 1px solid var(--md-sys-color-outline);
-            padding: 12px 16px; border-radius: 20px;
-            line-height: 1.4; font-size: 13px;
-            box-shadow: var(--md-elevation-2);
-        }
-        
-        .md-chip-row {
-            display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
-        }
-        .md-status-chip {
-            display: inline-flex; align-items: center; gap: 4px;
-            background: var(--md-sys-color-surface-container-high);
-            color: var(--md-sys-color-on-surface-variant);
-            padding: 3px 9px; border-radius: 8px;
-            font-size: 11px; font-weight: 500;
-        }
-        
-        #explanationBox {
-            background: rgba(40, 42, 44, 0.94);
-            color: var(--md-sys-color-on-surface);
-            border: 1px solid var(--md-sys-color-outline);
-            padding: 12px 16px; border-radius: 20px;
-            line-height: 1.45; font-size: 13px;
-            box-shadow: var(--md-elevation-2);
+            top: max(14px, env(safe-area-inset-top));
+            right: 14px;
             display: none;
-            animation: mdCardEnter 0.22s var(--md-motion-standard);
-        }
-        @keyframes mdCardEnter {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
+            align-items: center;
+            gap: 6px;
+            color: var(--md-sys-color-tertiary);
+            background: var(--md-sys-color-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            padding: 9px 16px;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 0.03em;
+            box-shadow: var(--md-elevation-shadow);
+            z-index: 10;
         }
 
-        /* Google Maps Style Collapsible Bottom Sheet */
-        #bottomSliders { 
+        /* Telemetry & Geology Cards */
+        #hudStack {
             position: absolute;
-            bottom: 0; left: 50%; transform: translateX(-50%);
-            width: min(100vw, 480px);
+            top: calc(max(14px, env(safe-area-inset-top)) + 50px);
+            left: 14px;
+            right: 14px;
+            max-width: 340px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        #ui {
             background: var(--md-sys-color-surface);
-            border-top: 1px solid var(--md-sys-color-outline);
-            border-left: 1px solid var(--md-sys-color-outline);
-            border-right: 1px solid var(--md-sys-color-outline);
-            border-radius: 28px 28px 0 0;
-            padding: 10px 22px calc(26px + env(safe-area-inset-bottom)) 22px;
             color: var(--md-sys-color-on-surface);
-            z-index: 20; pointer-events: auto;
-            box-shadow: var(--md-elevation-3);
+            border: 1px solid var(--md-sys-color-outline);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            padding: 14px 16px;
+            border-radius: 20px;
+            line-height: 1.45;
+            box-shadow: var(--md-elevation-shadow);
+            display: none;
         }
-        .sheet-handle-area {
-            display: flex; flex-direction: column; align-items: center;
-            cursor: pointer; user-select: none; padding-bottom: 4px;
-        }
-        .sheet-drag-pill {
-            width: 32px; height: 4px; border-radius: 2px;
-            background: var(--md-sys-color-outline);
-            margin-bottom: 8px;
-        }
-        .drawer-header {
-            width: 100%; display: flex; justify-content: space-between; align-items: center;
-        }
-        .drawer-title {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 14px; font-weight: 500; color: var(--md-sys-color-on-surface);
-        }
-        #toggleDrawerIcon {
+
+        .status-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--md-sys-color-outline);
+            font-size: 11.5px;
             color: var(--md-sys-color-on-surface-variant);
-            transition: transform 0.25s var(--md-motion-standard);
         }
-        #slidersBody {
-            overflow: visible; max-height: 400px; margin-top: 14px;
-            transition: max-height 0.3s var(--md-motion-standard), margin-top 0.3s ease, opacity 0.22s ease;
-            opacity: 1;
+
+        #fpsText {
+            color: var(--md-sys-color-primary);
+            font-weight: 600;
         }
-        #bottomSliders.collapsed #slidersBody {
-            overflow: hidden; max-height: 0; margin-top: 0; opacity: 0;
+
+        #strideText {
+            color: var(--md-sys-color-tertiary);
+            font-weight: 500;
         }
-        #bottomSliders.collapsed #toggleDrawerIcon {
+
+        #explanationBox {
+            background: var(--md-sys-color-surface-high);
+            color: var(--md-sys-color-on-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            border-left: 4px solid var(--md-sys-color-primary);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            padding: 12px 16px;
+            border-radius: 16px;
+            line-height: 1.4;
+            font-size: 13.5px;
+            box-shadow: var(--md-elevation-shadow);
+            display: none;
+        }
+
+        /* Bottom Control Sheet */
+        #bottomSliders {
+            position: absolute;
+            bottom: max(16px, env(safe-area-inset-bottom));
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 28px);
+            max-width: 440px;
+            background: var(--md-sys-color-surface);
+            border: 1px solid var(--md-sys-color-outline);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 14px 18px 16px;
+            border-radius: 24px;
+            color: var(--md-sys-color-on-surface);
+            box-shadow: var(--md-elevation-shadow);
+            z-index: 10;
+            pointer-events: auto;
+            display: none;
+        }
+
+        .sheet-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .sheet-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--md-sys-color-on-surface-variant);
+        }
+
+        #sheetToggleIcon {
+            color: var(--md-sys-color-on-surface-variant);
+            transition: transform 0.2s ease;
+        }
+
+        #bottomSliders.collapsed #sheetToggleIcon {
             transform: rotate(180deg);
         }
 
-        .slider-row { display: flex; flex-direction: column; margin-bottom: 18px; }
-        .slider-row:last-child { margin-bottom: 4px; }
-        .slider-label-row { 
-            display: flex; justify-content: space-between; align-items: center;
-            font-size: 13.5px; color: var(--md-sys-color-on-surface-variant); font-weight: 500;
-        }
-        .slider-badge { 
-            background: var(--md-sys-color-secondary-container);
-            color: var(--md-sys-color-on-secondary-container);
-            padding: 3px 11px; border-radius: 9999px;
-            font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+        #slidersBody {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
 
-        /* Custom Large Touch-Friendly Material Sliders */
-        .slider-row input[type="range"] { 
+        #bottomSliders.collapsed #slidersBody {
+            display: none;
+        }
+
+        .slider-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .slider-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13.5px;
+            font-weight: 500;
+        }
+
+        .slider-badge {
+            background: rgba(168, 199, 250, 0.16);
+            color: var(--md-sys-color-primary);
+            padding: 2px 10px;
+            border-radius: 9999px;
+            font-size: 12.5px;
+            font-weight: 600;
+        }
+
+        /* Material 3 Custom Range Input */
+        input[type="range"] {
             -webkit-appearance: none;
             appearance: none;
             width: 100%;
             height: 6px;
-            margin-top: 12px;
-            background: var(--md-sys-color-surface-container-high);
+            background: rgba(255, 255, 255, 0.18);
             border-radius: 9999px;
             outline: none;
-            cursor: pointer;
+            margin: 4px 0;
         }
-        .slider-row input[type="range"]::-webkit-slider-thumb {
+
+        input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             background: var(--md-sys-color-primary);
-            border: 3px solid var(--md-sys-color-surface);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+            border: 3px solid #141518;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
             cursor: pointer;
-            transition: transform 0.12s ease;
         }
-        .slider-row input[type="range"]::-webkit-slider-thumb:active {
-            transform: scale(1.16);
-        }
-        .slider-row input[type="range"]::-moz-range-thumb {
-            width: 24px;
-            height: 24px;
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             background: var(--md-sys-color-primary);
-            border: 3px solid var(--md-sys-color-surface);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+            border: 3px solid #141518;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
             cursor: pointer;
         }
-        
-        /* Material Precision Reticle */
+
+        /* Precision Reticle Crosshair */
         #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 24px; height: 24px;
-            margin: -12px 0 0 -12px;
-            border: 2px solid rgba(227, 227, 227, 0.85); border-radius: 50%;
-            z-index: 10; pointer-events: none;
-            box-shadow: 0 0 8px rgba(0, 0, 0, 0.45);
-            transition: border-color 0.2s var(--md-motion-standard), transform 0.2s var(--md-motion-standard);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 22px;
+            height: 22px;
+            margin: -11px 0 0 -11px;
+            border: 2px solid var(--md-sys-color-tertiary);
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(109, 213, 140, 0.45);
+            z-index: 10;
+            pointer-events: none;
+            display: none;
         }
+
         #crosshair::after {
-            content: ""; position: absolute; top: 50%; left: 50%;
-            width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
-            background: #e3e3e3; border-radius: 50%;
-            transition: background 0.2s ease;
-        }
-        #crosshair.locked {
-            border-color: var(--md-sys-color-tertiary);
-            transform: scale(1.15);
-        }
-        #crosshair.locked::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 4px;
+            margin: -2px 0 0 -2px;
             background: var(--md-sys-color-tertiary);
+            border-radius: 50%;
         }
     </style>
 </head>
 <body>
     <!-- 1. Main Menu -->
-    <div id="menuScreen" class="screen-layer active">
-        <h1>HK Geology Explorer</h1>
-        <p class="menu-subtitle">Real-time 3D lithological terrain overlay for geological field mapping.</p>
-        <button class="menu-btn" id="btnLiveMode">
-            <span class="material-symbols-outlined">photo_camera</span>
-            Live AR Mode
-        </button>
-        <button class="menu-btn tonal" id="btnMapMode">
-            <span class="material-symbols-outlined">map</span>
-            Virtual Map Mode
-        </button>
+    <div id="menuScreen">
+        <div class="menu-header">
+            <div class="menu-chip">
+                <span class="material-symbols-outlined" style="font-size: 15px;">terrain</span>
+                5m DTM · 1:20k Geology
+            </div>
+            <h1>Hong Kong Geoscientific Explorer</h1>
+            <div class="menu-subtitle">Augmented Reality &amp; 3D Lithological Field Mapping</div>
+        </div>
+
+        <div class="menu-actions">
+            <button class="menu-btn menu-btn-primary" id="btnLiveMode">
+                <span class="material-symbols-outlined">view_in_ar</span>
+                Live AR Mode
+            </button>
+            <button class="menu-btn menu-btn-tonal" id="btnMapMode">
+                <span class="material-symbols-outlined">explore</span>
+                Virtual Map Mode
+            </button>
+        </div>
     </div>
 
     <!-- 2. Interactive Map Screen -->
-    <div id="mapScreen" class="screen-layer">
-        <div class="map-top-bar">
-            <button id="btnMapBack" class="icon-btn-circle" aria-label="Back to Menu">
+    <div id="mapScreen">
+        <div id="mapTopBar">
+            <button id="btnMapBack" aria-label="Back to menu">
                 <span class="material-symbols-outlined">arrow_back</span>
             </button>
-            <span id="mapInstructions">Tap inside the green region to spawn</span>
+            <div id="mapInstructions">Tap map to select spawn point</div>
         </div>
         <div id="leafletMap"></div>
         <button id="confirmMapBtn">
-            <span class="material-symbols-outlined">my_location</span>
+            <span class="material-symbols-outlined">pin_drop</span>
             Spawn Here
         </button>
     </div>
 
-    <!-- 3. Loading Transition Overlay -->
-    <div id="loadingOverlay">
-        <div class="md-spinner"></div>
-        <div id="loadingText">Initializing terrain engine...</div>
-    </div>
-
-    <!-- 4. Main 3D / AR UI -->
-    <button id="btnBack" class="md-top-pill ar-hud">
-        <span class="material-symbols-outlined">arrow_back</span>
+    <!-- 3. Main 3D / AR UI -->
+    <button id="btnBack">
+        <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span>
         Menu
     </button>
     <video id="cameraFeed" autoplay playsinline></video>
     
-    <div id="leftHudColumn" class="ar-hud">
+    <div id="compassBox">
+        <span class="material-symbols-outlined" style="font-size: 17px;">explore</span>
+        <span id="compassText">0° N</span>
+    </div>
+
+    <div id="hudStack">
         <div id="ui">
-            <div id="infoText">Aim reticle at terrain...</div>
-            <div class="md-chip-row">
-                <span id="gpsText" class="md-status-chip">GPS: Waiting</span>
-                <span id="fpsText" class="md-status-chip">-- fps</span>
+            <div id="infoText">Awaiting initialization...</div>
+            <div class="status-row">
+                <span id="gpsText">GPS: Waiting...</span>
+                <span>•</span>
+                <span id="fpsText">-- fps</span>
+                <span id="strideText"></span>
             </div>
         </div>
+        
         <div id="explanationBox"></div>
     </div>
     
-    <div id="compassBox" class="ar-hud">
-        <span class="material-symbols-outlined" style="font-size:17px;">explore</span>
-        <span id="compassVal">0° N</span>
-    </div>
-    
-    <div id="bottomSliders" class="ar-hud">
-        <div class="sheet-handle-area" id="drawerToggle">
-            <div class="sheet-drag-pill"></div>
-            <div class="drawer-header">
-                <span class="drawer-title">
-                    <span class="material-symbols-outlined" style="font-size:18px; color:var(--md-sys-color-primary);">tune</span>
-                    Field Controls
-                </span>
-                <span id="toggleDrawerIcon" class="material-symbols-outlined">expand_more</span>
+    <div id="bottomSliders">
+        <div class="sheet-header" id="sheetToggle">
+            <div class="sheet-title">
+                <span class="material-symbols-outlined" style="font-size: 18px;">tune</span>
+                Terrain &amp; View Controls
             </div>
+            <span class="material-symbols-outlined" id="sheetToggleIcon">expand_more</span>
         </div>
+
         <div id="slidersBody">
             <div class="slider-row">
                 <div class="slider-label-row">
@@ -473,9 +596,9 @@
             <div class="slider-row">
                 <div class="slider-label-row">
                     <label for="viewDistance">Render Distance</label>
-                    <span class="slider-badge"><span id="distVal">800</span> m</span>
+                    <span class="slider-badge"><span id="distVal">3000</span> m</span>
                 </div>
-                <input type="range" id="viewDistance" min="100" max="2000" step="50" value="800">
+                <input type="range" id="viewDistance" min="500" max="15000" step="500" value="3000">
             </div>
             <div class="slider-row">
                 <div class="slider-label-row">
@@ -487,13 +610,14 @@
         </div>
     </div>
 
-    <div id="crosshair" class="ar-hud"></div>
+    <div id="crosshair"></div>
     
+    <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    <script src="app.js?v=20"></script>
+    <script src="app.js?v=15"></script>
 
     <script>
       if ('serviceWorker' in navigator) {
