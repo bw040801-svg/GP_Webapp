@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hk-geology-pwa-v5';
+const CACHE_NAME = 'hk-geology-pwa-v9';
 const APP_SHELL = [
   './',
   './index.html',

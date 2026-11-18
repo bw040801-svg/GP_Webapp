@@ -2,12 +2,15 @@ let scene, camera, cameraGroup, renderer, controls;
 let activeTiles = {};
 let raycaster, centerScreen;
 let globalMeta;
-let rockColors = {}; 
+let rockColors = {};
+let tmColors = {};
+let activeLayer = 'lith'; // 'lith' or 'tm'
 let geoWatchId = null;
 
 let currentMode = null; 
 let mapInstance = null;
 let mapMarker = null;
+let mapBoundsRect = null;
 let selectedLat = 22.3193, selectedLon = 114.1694;
 
 let yawOffset = 0, pitchOffset = 0;
@@ -16,7 +19,6 @@ let gpsSceneX = 0, gpsSceneZ = 0;
 let currentGroundElev = 20;
 let heightOffset = 10;
 
-// Reusable quaternion helpers for drift-free pitch/yaw camera calibration
 const worldUp = new THREE.Vector3(0, 1, 0);
 const localRight = new THREE.Vector3(1, 0, 0);
 const yawQuat = new THREE.Quaternion();
@@ -144,6 +146,21 @@ const GEOLOGY_DICT = {
     "F": "Reclamation and Fill Bodies"
 };
 
+// Official GeoMap20k Dictionary: List of Texture and Metamorphism (TM_Type)
+const TM_DICT = {
+    "at": "Altered tuff and sedimentary rock",
+    "ma": "Autobrecciated",
+    "mf": "Fault breccia",
+    "mh": "Contact metamorphism",
+    "mi": "Inequigranular",
+    "mm": "Metamorphosed",
+    "mmg": "Megacrystic",
+    "mmy": "Mylonitised",
+    "msc": "Schist / Schistosity",
+    "msi": "Silicified",
+    "msm": "Slightly metamorphosed"
+};
+
 proj4.defs("EPSG:2326","+proj=tmerc +lat_0=22.31213333333334 +lon_0=114.1785555555556 +k=1 +x_0=836694.05 +y_0=819069.8 +ellps=intl +towgs84=-162.619,-276.959,-161.764,0.067753,-2.24365,-1.15883,-1.09425 +units=m +no_defs");
 
 // UI Event Listeners
@@ -155,6 +172,53 @@ document.getElementById('btnMapBack').addEventListener('click', returnToMenu);
 document.getElementById('drawerToggle').addEventListener('click', () => {
     document.getElementById('bottomSliders').classList.toggle('collapsed');
 });
+
+document.getElementById('btnLayerLith').addEventListener('click', () => switchActiveLayer('lith'));
+document.getElementById('btnLayerTM').addEventListener('click', () => switchActiveLayer('tm'));
+
+function switchActiveLayer(layer) {
+    if (activeLayer === layer) return;
+    activeLayer = layer;
+    document.getElementById('btnLayerLith').classList.toggle('active', layer === 'lith');
+    document.getElementById('btnLayerTM').classList.toggle('active', layer === 'tm');
+    recolorAllLoadedTiles();
+}
+
+function recolorAllLoadedTiles() {
+    for (let key in activeTiles) {
+        const tile = activeTiles[key];
+        if (!tile.isLoaded || !tile.group || !tile.group.children[1]) continue;
+
+        const geom = tile.group.children[1].geometry;
+        const colorAttr = geom.attributes.color;
+        if (!colorAttr) continue;
+
+        const colors = colorAttr.array;
+        const stride = tile.stride;
+        const cols = tile.cols;
+        const rows = tile.rows;
+        const segX = Math.ceil((cols - 1) / stride);
+        const segY = Math.ceil((rows - 1) / stride);
+        const nx = segX + 1;
+        const ny = segY + 1;
+
+        let v = 0;
+        for (let r = 0; r < ny; r++) {
+            const srcR = Math.min(r * stride, rows - 1);
+            for (let c = 0; c < nx; c++, v++) {
+                const srcC = Math.min(c * stride, cols - 1);
+                const i = srcR * cols + srcC;
+                const col = activeLayer === 'tm'
+                    ? (tmColors[tile.tm[i]] || tmColors[0])
+                    : (rockColors[tile.lith[i]] || rockColors[0]);
+                colors[v * 3] = col.r;
+                colors[v * 3 + 1] = col.g;
+                colors[v * 3 + 2] = col.b;
+            }
+        }
+        colorAttr.needsUpdate = true;
+    }
+}
 
 // Smooth Screen & Loading Transition Helpers
 function setActiveScreen(screenId) {
@@ -186,25 +250,56 @@ function hideUIElements() {
     document.getElementById('explanationBox').style.display = 'none';
 }
 
-function generateColors(dictionary) {
+function generateColors(rockDict, tmDict = {}) {
     rockColors[0] = new THREE.Color("white"); 
-    for (let id in dictionary) {
+    for (let id in rockDict) {
         const hue = (id * 137.508) % 360; 
         rockColors[id] = new THREE.Color(`hsl(${hue}, 70%, 50%)`);
     }
+
+    // Neutral slate tint for areas without metamorphic/textural overprint (id = 0)
+    tmColors[0] = new THREE.Color("#2b2e33");
+    for (let id in tmDict) {
+        const hue = ((id * 97.5) + 25) % 360;
+        tmColors[id] = new THREE.Color(`hsl(${hue}, 82%, 56%)`);
+    }
 }
 
-// Distance-based LOD calculation for territory-wide 5m Hong Kong DTM
+function getDatasetGeoInfo() {
+    const minE = globalMeta.origin_x;
+    const maxE = globalMeta.origin_x + (globalMeta.cols * globalMeta.resolution);
+    const maxN = globalMeta.origin_y;
+    const minN = globalMeta.origin_y - (globalMeta.rows * globalMeta.resolution);
+
+    const centerHK = [(minE + maxE) / 2, (minN + maxN) / 2];
+    const centerWGS = proj4("EPSG:2326", "WGS84", centerHK);
+    const nwWGS = proj4("EPSG:2326", "WGS84", [minE, maxN]);
+    const seWGS = proj4("EPSG:2326", "WGS84", [maxE, minN]);
+
+    return {
+        centerLat: centerWGS[1],
+        centerLon: centerWGS[0],
+        bounds: [[nwWGS[1], nwWGS[0]], [seWGS[1], seWGS[0]]]
+    };
+}
+
+// Automatically adapts LOD thresholds to either 0.5m local DTM or 5m Whole-HK DTM
 function getOptimalStrideForTile(tr, tc) {
     const tileMeters = globalMeta.tile_size * globalMeta.resolution;
     const tileCenterX = (tc + 0.5) * tileMeters;
     const tileCenterZ = (tr + 0.5) * tileMeters;
     const dist = Math.hypot(tileCenterX - gpsSceneX, tileCenterZ - gpsSceneZ);
 
-    if (dist <= 2800) return 1;      // 5m mesh for immediate slopes
-    if (dist <= 5000) return 4;      // 20m mesh (94% less memory than stride 1)
-    if (dist <= 8500) return 8;      // 40m mesh (98.4% less memory)
-    return 16;                       // 80m mesh for distant horizon peaks
+    if (globalMeta.resolution <= 1.0) {
+        if (dist <= 280) return 1;
+        if (dist <= 550) return 2;
+        return 4;
+    } else {
+        if (dist <= 2800) return 1;
+        if (dist <= 5000) return 4;
+        if (dist <= 8500) return 8;
+        return 16;
+    }
 }
 
 function updateStrideHudDisplay() {
@@ -227,14 +322,34 @@ function updateStrideHudDisplay() {
     }
 }
 
-function openMapMode() {
+async function openMapMode() {
     setActiveScreen('mapScreen');
     
+    if (!globalMeta) {
+        setLoading(true, "Loading geological metadata...");
+        globalMeta = await (await fetch('data/meta.json')).json();
+        generateColors(globalMeta.rock_dictionary, globalMeta.tm_dictionary);
+        setLoading(false);
+    }
+
+    const isLocalDataset = globalMeta.resolution <= 1.0;
+    const geoInfo = getDatasetGeoInfo();
+    const initialCenter = isLocalDataset ? [geoInfo.centerLat, geoInfo.centerLon] : [22.35, 114.12];
+    const initialZoom = isLocalDataset ? 15 : 11;
+    
     if (!mapInstance) {
-        mapInstance = L.map('leafletMap', { zoomControl: false }).setView([22.35, 114.12], 11);
+        mapInstance = L.map('leafletMap', { zoomControl: false }).setView(initialCenter, initialZoom);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18, attribution: '© OpenStreetMap'
+            maxZoom: 19, attribution: '© OpenStreetMap'
         }).addTo(mapInstance);
+
+        if (isLocalDataset) {
+            mapBoundsRect = L.rectangle(geoInfo.bounds, {
+                color: "#6dd58c",
+                weight: 2,
+                fillOpacity: 0.12
+            }).addTo(mapInstance);
+        }
 
         mapInstance.on('click', function(e) {
             if (mapMarker) mapInstance.removeLayer(mapMarker);
@@ -243,6 +358,8 @@ function openMapMode() {
             selectedLon = e.latlng.lng;
             document.getElementById('confirmMapBtn').classList.add('visible');
         });
+    } else {
+        mapInstance.setView(initialCenter, initialZoom);
     }
     setTimeout(() => mapInstance.invalidateSize(), 320);
 }
@@ -304,7 +421,7 @@ function returnToMenu() {
 async function loadAppMetadata() {
     if (!globalMeta) {
         globalMeta = await (await fetch('data/meta.json')).json();
-        generateColors(globalMeta.rock_dictionary);
+        generateColors(globalMeta.rock_dictionary, globalMeta.tm_dictionary);
     }
     await initThreeJS();
 }
@@ -322,9 +439,11 @@ async function initThreeJS() {
 
     scene = new THREE.Scene();
     const initialDistance = parseInt(document.getElementById('viewDistance').value);
-    scene.fog = new THREE.Fog(0x87CEEB, initialDistance * 0.5, initialDistance);
+    const fogStartRatio = globalMeta.resolution <= 1.0 ? 0.6 : 0.5;
+    scene.fog = new THREE.Fog(0x87CEEB, initialDistance * fogStartRatio, initialDistance);
     
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, initialDistance);
+    const nearPlane = globalMeta.resolution <= 1.0 ? 0.5 : 1.0;
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, nearPlane, initialDistance);
     cameraGroup = new THREE.Group();
     scene.add(cameraGroup);
     cameraGroup.add(camera);
@@ -337,7 +456,7 @@ async function initThreeJS() {
     controls = new THREE.DeviceOrientationControls(camera);
 
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
-    sun.position.set(3000, 2500, 3000); 
+    sun.position.set(1500, 1500, 1500); 
     scene.add(sun);
     scene.add(new THREE.AmbientLight(0x444444));
 
@@ -357,7 +476,7 @@ async function initThreeJS() {
         const dist = parseInt(e.target.value);
         camera.far = dist;
         camera.updateProjectionMatrix();
-        scene.fog.near = dist * 0.5;
+        scene.fog.near = dist * fogStartRatio;
         scene.fog.far = dist;
         checkAndLoadTiles(dist);
     });
@@ -441,8 +560,15 @@ function startGPSWatcher() {
         let lat = position.coords.latitude;
         let lon = position.coords.longitude;
         if (lat > 50) { 
-            lat = 22.411; lon = 114.124; 
-            document.getElementById('gpsText').innerText = "Tai Mo Shan (Sim)";
+            if (globalMeta.resolution <= 1.0) {
+                const geoInfo = getDatasetGeoInfo();
+                lat = geoInfo.centerLat;
+                lon = geoInfo.centerLon;
+                document.getElementById('gpsText').innerText = "Demo Center";
+            } else {
+                lat = 22.411; lon = 114.124;
+                document.getElementById('gpsText').innerText = "Tai Mo Shan (Sim)";
+            }
         } else {
             document.getElementById('gpsText').innerText = `GPS ±${Math.round(position.coords.accuracy)}m`;
         }
@@ -513,9 +639,10 @@ async function checkAndLoadTiles(distanceMeters) {
 
 async function loadTileData(key, stride) {
     try {
-        const [demRes, lithRes] = await Promise.all([
+        const [demRes, lithRes, tmRes] = await Promise.all([
             fetch(`data/dem_${key}.bin`),
-            fetch(`data/lith_${key}.bin`)
+            fetch(`data/lith_${key}.bin`),
+            fetch(`data/tm_${key}.bin`).catch(() => ({ ok: false }))
         ]);
 
         if (!demRes.ok || !lithRes.ok) {
@@ -527,6 +654,9 @@ async function loadTileData(key, stride) {
 
         const demBuffer = new Float32Array(await demRes.arrayBuffer());
         const lithBuffer = new Uint8Array(await lithRes.arrayBuffer());
+        const tmBuffer = tmRes.ok
+            ? new Uint8Array(await tmRes.arrayBuffer())
+            : new Uint8Array(demBuffer.length);
 
         const [tr, tc] = key.split('_').map(Number);
         
@@ -555,7 +685,9 @@ async function loadTileData(key, stride) {
                 const srcC = Math.min(c * stride, cols - 1);
                 const i = srcR * cols + srcC;
                 pos[v * 3 + 2] = demBuffer[i] < -500 ? 0 : demBuffer[i];
-                const col = rockColors[lithBuffer[i]] || rockColors[0];
+                const col = activeLayer === 'tm'
+                    ? (tmColors[tmBuffer[i]] || tmColors[0])
+                    : (rockColors[lithBuffer[i]] || rockColors[0]);
                 colors[v * 3] = col.r;
                 colors[v * 3 + 1] = col.g;
                 colors[v * 3 + 2] = col.b;
@@ -598,7 +730,7 @@ async function loadTileData(key, stride) {
 
         const colorMesh = new THREE.Mesh(geometry, colorMat);
         colorMesh.renderOrder = 1;
-        colorMesh.userData = { lithBuffer: lithBuffer, startCol: startCol, startRow: startRow, cols: cols };
+        colorMesh.userData = { lithBuffer: lithBuffer, tmBuffer: tmBuffer, startCol: startCol, startRow: startRow, cols: cols };
 
         const group = new THREE.Group();
         group.add(occluderMesh);
@@ -610,7 +742,8 @@ async function loadTileData(key, stride) {
             stride: stride, 
             group: group, 
             dem: demBuffer, 
-            lith: lithBuffer, 
+            lith: lithBuffer,
+            tm: tmBuffer,
             cols: cols, 
             rows: rows 
         };
@@ -629,7 +762,7 @@ function sampleCell(x, z) {
     if (!tile || !tile.isLoaded) return null;
     const i = (row - tr * ts) * tile.cols + (col - tc * ts);
     const e = tile.dem[i];
-    return { elev: e < -500 ? 0 : e, rock: tile.lith[i] };
+    return { elev: e < -500 ? 0 : e, rock: tile.lith[i], tm: tile.tm ? tile.tm[i] : 0 };
 }
 
 function pickCentreRay() {
@@ -641,7 +774,7 @@ function pickCentreRay() {
         const x = origin.x + dir.x * t, y = origin.y + dir.y * t, z = origin.z + dir.z * t;
         if (dir.y > 0 && y > 2000) break;
         const cell = sampleCell(x, z);
-        if (cell && y <= cell.elev) return { x, y, z, rock: cell.rock };
+        if (cell && y <= cell.elev) return { x, y, z, rock: cell.rock, tm: cell.tm };
     }
     return null;
 }
@@ -687,21 +820,33 @@ function updateRaycaster() {
 
     crosshair.classList.add('locked');
     const rockCode = globalMeta.rock_dictionary[hit.rock] || "";
+    const tmCode = (globalMeta.tm_dictionary && hit.tm) ? (globalMeta.tm_dictionary[hit.tm] || "") : "";
     const easting = globalMeta.origin_x + hit.x;
     const northing = globalMeta.origin_y - hit.z;
     const hexColor = rockColors[hit.rock] ? `#${rockColors[hit.rock].getHexString()}` : '#a8c7fa';
+    const tmHex = tmColors[hit.tm] ? `#${tmColors[hit.tm].getHexString()}` : '#facc15';
+
+    const tmBadge = tmCode
+        ? `<span style="display:inline-flex; align-items:center; gap:5px; background:rgba(255,255,255,0.1); padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; color:#facc15;">` +
+          `<span style="width:8px; height:8px; border-radius:50%; background:${tmHex}; display:inline-block;"></span>` +
+          `TM: ${tmCode}</span>`
+        : '';
 
     document.getElementById('infoText').innerHTML =
-        `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:2px;">` +
+        `<div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:4px; flex-wrap:wrap;">` +
             `<span style="display:inline-flex; align-items:center; gap:7px; font-size:15px; font-weight:700; color:#6dd58c;">` +
                 `<span style="width:11px; height:11px; border-radius:50%; background:${hexColor}; display:inline-block; border:1px solid rgba(255,255,255,0.5);"></span>` +
-                `${rockCode}` +
+                `${rockCode || "Unmapped"}` +
             `</span>` +
+            tmBadge +
             `<span style="font-size:12px; color:#c4c7c5;">Elev ${Math.round(hit.y)} m</span>` +
         `</div>` +
         `<div style="font-size:12px; color:#c4c7c5;">HK1980 · E ${Math.round(easting)}, N ${Math.round(northing)}</div>`;
+
+    const rockDesc = GEOLOGY_DICT[rockCode] || "Unmapped geological unit";
+    const tmDesc = tmCode ? `<div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.12); color:#fde047;"><b>Texture / Metamorphism (${tmCode}):</b> ${TM_DICT[tmCode] || tmCode}</div>` : "";
     expBox.style.display = 'block';
-    expBox.innerHTML = GEOLOGY_DICT[rockCode] || "Unmapped geological unit";
+    expBox.innerHTML = rockDesc + tmDesc;
 }
 
 let lastHud = 0, frames = 0, fpsStart = 0;

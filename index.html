@@ -20,7 +20,6 @@
     
     <style>
         :root {
-            /* Material Design 3 Dark Scheme */
             --md-sys-color-background: #131314;
             --md-sys-color-surface: #1e1f20;
             --md-sys-color-surface-container: #282a2c;
@@ -53,7 +52,6 @@
             user-select: none;
         }
 
-        /* Screen Layer Transitions */
         .screen-layer {
             position: fixed; inset: 0;
             opacity: 0; visibility: hidden; pointer-events: none;
@@ -65,7 +63,7 @@
             transform: translateY(0);
         }
         
-        /* 1. Home Screen with Photo Background */
+        /* 1. Home Screen */
         #menuScreen {
             background: linear-gradient(rgba(19, 19, 20, 0.52), rgba(19, 19, 20, 0.82)),
                         url('./background.jpg') center center / cover no-repeat;
@@ -84,7 +82,6 @@
             text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
         }
 
-        /* Material 3 Pill Buttons */
         .menu-btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 10px;
             background-color: var(--md-sys-color-primary);
@@ -111,7 +108,6 @@
         #mapScreen { z-index: 150; background: var(--md-sys-color-background); }
         #leafletMap { width: 100%; height: 100%; }
         
-        /* Fit-to-Text Floating Pill Header on Map */
         .map-top-bar {
             position: absolute;
             top: calc(12px + env(safe-area-inset-top));
@@ -140,7 +136,6 @@
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
 
-        /* Material Extended FAB for Confirm Spawn */
         #confirmMapBtn {
             position: absolute;
             bottom: calc(28px + env(safe-area-inset-bottom));
@@ -162,7 +157,7 @@
         }
         #confirmMapBtn:active { transform: translateX(-50%) scale(0.96); }
 
-        /* 3. Material Loading Scrim & Progress Indicator */
+        /* 3. Loading Overlay */
         #loadingOverlay {
             position: fixed; inset: 0; z-index: 250;
             background: rgba(19, 19, 20, 0.86);
@@ -194,7 +189,6 @@
         }
         .ar-hud.active { opacity: 1; visibility: visible; }
 
-        /* Top-Left Back Pill */
         .md-top-pill {
             position: absolute;
             top: calc(14px + env(safe-area-inset-top));
@@ -211,7 +205,6 @@
         }
         .md-top-pill:active { background: var(--md-sys-color-surface-container-high); }
 
-        /* Top-Right Compass Pill */
         #compassBox {
             position: absolute;
             top: calc(14px + env(safe-area-inset-top));
@@ -226,12 +219,11 @@
             z-index: 20; box-shadow: var(--md-elevation-2);
         }
         
-        /* Auto-stacking Left Material Cards */
         #leftHudColumn {
             position: absolute;
             top: calc(64px + env(safe-area-inset-top));
             left: calc(14px + env(safe-area-inset-left));
-            width: min(300px, calc(100vw - 28px));
+            width: min(310px, calc(100vw - 28px));
             display: flex; flex-direction: column; gap: 8px;
             z-index: 10; pointer-events: none;
         }
@@ -271,7 +263,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Google Maps Style Collapsible Bottom Sheet */
+        /* Bottom Sheet */
         #bottomSliders { 
             position: absolute;
             bottom: 0; left: 50%; transform: translateX(-50%);
@@ -307,7 +299,7 @@
             transition: transform 0.25s var(--md-motion-standard);
         }
         #slidersBody {
-            overflow: visible; max-height: 400px; margin-top: 14px;
+            overflow: visible; max-height: 460px; margin-top: 14px;
             transition: max-height 0.3s var(--md-motion-standard), margin-top 0.3s ease, opacity 0.22s ease;
             opacity: 1;
         }
@@ -316,6 +308,31 @@
         }
         #bottomSliders.collapsed #toggleDrawerIcon {
             transform: rotate(180deg);
+        }
+
+        /* Material 3 Segmented Layer Switcher */
+        .segmented-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            background: var(--md-sys-color-surface-container);
+            border: 1px solid var(--md-sys-color-outline);
+            border-radius: 9999px;
+            padding: 3px;
+            margin-bottom: 16px;
+        }
+        .seg-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            height: 36px; border: none; border-radius: 9999px;
+            background: transparent;
+            color: var(--md-sys-color-on-surface-variant);
+            font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+        .seg-btn.active {
+            background: var(--md-sys-color-secondary-container);
+            color: var(--md-sys-color-on-secondary-container);
+            font-weight: 600;
         }
 
         .slider-row { display: flex; flex-direction: column; margin-bottom: 18px; }
@@ -331,7 +348,6 @@
             font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
         }
 
-        /* Custom Large Touch-Friendly Material Sliders */
         .slider-row input[type="range"] { 
             -webkit-appearance: none;
             appearance: none;
@@ -368,7 +384,7 @@
             cursor: pointer;
         }
         
-        /* Material Precision Reticle */
+        /* Precision Reticle */
         #crosshair {
             position: absolute; top: 50%; left: 50%; width: 24px; height: 24px;
             margin: -12px 0 0 -12px;
@@ -413,7 +429,7 @@
             <button id="btnMapBack" class="icon-btn-circle" aria-label="Back to Menu">
                 <span class="material-symbols-outlined">arrow_back</span>
             </button>
-            <span id="mapInstructions">Tap map to select spawn point</span>
+            <span id="mapInstructions">Tap inside the green region to spawn</span>
         </div>
         <div id="leafletMap"></div>
         <button id="confirmMapBtn">
@@ -463,6 +479,18 @@
             </div>
         </div>
         <div id="slidersBody">
+            <!-- Map Layer Selector -->
+            <div class="segmented-group">
+                <button type="button" class="seg-btn active" id="btnLayerLith">
+                    <span class="material-symbols-outlined" style="font-size:17px;">layers</span>
+                    Lithology
+                </button>
+                <button type="button" class="seg-btn" id="btnLayerTM">
+                    <span class="material-symbols-outlined" style="font-size:17px;">texture</span>
+                    Texture &amp; Meta
+                </button>
+            </div>
+
             <div class="slider-row">
                 <div class="slider-label-row">
                     <label for="heightSlider">Camera Height</label>
@@ -473,9 +501,9 @@
             <div class="slider-row">
                 <div class="slider-label-row">
                     <label for="viewDistance">Render Distance</label>
-                    <span class="slider-badge"><span id="distVal">3000</span> m</span>
+                    <span class="slider-badge"><span id="distVal">800</span> m</span>
                 </div>
-                <input type="range" id="viewDistance" min="500" max="15000" step="500" value="3000">
+                <input type="range" id="viewDistance" min="100" max="2000" step="50" value="800">
             </div>
             <div class="slider-row">
                 <div class="slider-label-row">
@@ -493,7 +521,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    <script src="app.js?v=16"></script>
+    <script src="app.js?v=21"></script>
 
     <script>
       if ('serviceWorker' in navigator) {
