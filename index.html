@@ -501,9 +501,9 @@
             <div class="slider-row">
                 <div class="slider-label-row">
                     <label for="viewDistance">Render Distance</label>
-                    <span class="slider-badge"><span id="distVal">800</span> m</span>
+                    <span class="slider-badge" id="distBadge"><span id="distVal">800</span> m</span>
                 </div>
-                <input type="range" id="viewDistance" min="100" max="2000" step="50" value="800">
+                <input type="range" id="viewDistance" min="100" max="10000" step="100" value="800">
             </div>
             <div class="slider-row">
                 <div class="slider-label-row">
@@ -521,7 +521,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
-    <script src="app.js?v=21"></script>
+    <script src="app.js?v=22"></script>
 
     <script>
       if ('serviceWorker' in navigator) {

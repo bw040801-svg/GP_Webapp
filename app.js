@@ -471,7 +471,23 @@ async function initThreeJS() {
     });
 
     const distSlider = document.getElementById('viewDistance');
-    distSlider.addEventListener('input', (e) => document.getElementById('distVal').innerText = e.target.value);
+    const updateDistBadge = (val) => {
+        const dist = parseInt(val);
+        const badge = document.getElementById('distBadge');
+        if (badge) {
+            if (dist >= 1000) {
+                const km = (dist / 1000).toFixed(dist % 1000 === 0 ? 0 : 1);
+                badge.innerHTML = `<span id="distVal">${dist}</span> m (${km} km)`;
+            } else {
+                badge.innerHTML = `<span id="distVal">${dist}</span> m`;
+            }
+        } else {
+            const el = document.getElementById('distVal');
+            if (el) el.innerText = dist;
+        }
+    };
+    updateDistBadge(distSlider.value);
+    distSlider.addEventListener('input', (e) => updateDistBadge(e.target.value));
     distSlider.addEventListener('change', (e) => {
         const dist = parseInt(e.target.value);
         camera.far = dist;
